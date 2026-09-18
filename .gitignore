@@ -1,0 +1,8 @@
+build/
+out/
+.cache/
+.vs/
+.vscode/
+*.rc_mac_dlg
+*.rc_mac_menu
+__pycache__/

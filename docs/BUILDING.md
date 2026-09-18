@@ -1,0 +1,63 @@
+# Building SRT
+
+## Prerequisites
+
+- CMake 3.24 or newer and Ninja (Windows uses Visual Studio's generator instead).
+- Windows: Visual Studio 2022 with the "Desktop development with C++" workload.
+- macOS: Xcode command-line tools. Apple Silicon only for now.
+- Linux: GCC 13 or Clang 18. Linux builds are for compile checks and tests;
+  the extension itself is not tested against REAPER for Linux yet.
+- Perl (macOS and Linux only) for converting the dialog resource to SWELL form.
+  macOS ships it; on Linux install the `perl` package.
+
+Network access during the first configure: CMake downloads the prebuilt ONNX
+Runtime for your platform (and DirectML on Windows) into the build folder.
+
+## Get the source
+
+```
+git clone --recurse-submodules https://github.com/shaunobi/reaper-tools.git
+cd reaper-tools
+```
+
+If you already cloned without submodules: `git submodule update --init --recursive`.
+
+## Build and test
+
+```
+cmake --preset windows-release      # or macos-release, linux-release
+cmake --build --preset windows-release
+ctest --preset windows-release
+```
+
+## Install into REAPER
+
+```
+cmake --install build/windows-release --config Release --prefix dist
+```
+
+That produces `dist/UserPlugins/` containing the extension and the ONNX
+Runtime libraries it needs. Copy the contents into REAPER's `UserPlugins`
+folder (REAPER > Options > Show REAPER resource path), then restart REAPER.
+The action list should show "SRT: About (version, runtime check)". Running
+it prints version and provider information to the ReaScript console and
+runs a small model on the best available execution provider.
+
+## Layout
+
+```
+src/core     srt_core: audio processing, no REAPER dependency
+src/cli      srt_cli: command-line harness over srt_core
+src/reaper   reaper_srt: the REAPER extension
+tests        Catch2 unit tests
+tools        developer-side scripts (Python) for models
+third_party  git submodules: reaper-sdk, WDL, pocketfft
+cmake        dependency fetching and helpers
+```
+
+## Regenerating the smoke model
+
+```
+python -m venv .venv && .venv/bin/pip install onnx numpy
+.venv/bin/python tools/make_smoke_model.py
+```

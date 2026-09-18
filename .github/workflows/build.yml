@@ -1,0 +1,83 @@
+name: build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  linux:
+    name: Linux (compile check + tests)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build perl
+      - name: Configure
+        run: cmake --preset linux-release
+      - name: Build
+        run: cmake --build --preset linux-release
+      - name: Test
+        run: ctest --preset linux-release
+
+  windows:
+    name: Windows x64
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - name: Configure
+        run: cmake --preset windows-release
+      - name: Build
+        run: cmake --build --preset windows-release
+      - name: Test
+        run: ctest --preset windows-release
+      - name: Package
+        run: cmake --install build/windows-release --config Release --prefix dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reaper_srt-windows-x64
+          path: dist/UserPlugins
+
+  macos:
+    name: macOS arm64
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - name: Install tools
+        run: brew install ninja
+      - name: Configure
+        run: cmake --preset macos-release
+      - name: Build
+        run: cmake --build --preset macos-release
+      - name: Test
+        run: ctest --preset macos-release
+      - name: Package
+        run: cmake --install build/macos-release --prefix dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reaper_srt-macos-arm64
+          path: dist/UserPlugins
+
+  release:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts }
+      - name: Zip
+        run: |
+          cd artifacts
+          (cd reaper_srt-windows-x64 && zip -r ../reaper_srt-${GITHUB_REF_NAME}-windows-x64.zip .)
+          (cd reaper_srt-macos-arm64 && zip -r ../reaper_srt-${GITHUB_REF_NAME}-macos-arm64.zip .)
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: artifacts/*.zip

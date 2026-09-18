@@ -1,0 +1,12 @@
+#include "resource.h"
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+IDD_SRT_PROGRESS DIALOGEX 0, 0, 340, 60
+STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "SRT jobs"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    PUSHBUTTON      "Cancel all",IDC_SRT_CANCEL_ALL,280,42,54,14
+END
