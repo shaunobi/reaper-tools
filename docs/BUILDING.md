@@ -57,6 +57,22 @@ third_party  git submodules: reaper-sdk, WDL, pocketfft
 cmake        dependency fetching and helpers
 ```
 
+## Checking Windows-only code from Linux
+
+REAPER extensions for Windows must be built with Microsoft's compiler, but a
+Linux machine can still catch Windows-only mistakes (a missing system header,
+a non-portable call) before CI does:
+
+```
+sudo apt install g++-mingw-w64-x86-64
+tools/check_windows_syntax.sh
+```
+
+This syntax-checks every source file and the dialog resource against the
+Windows headers with the MinGW cross compiler. It takes about a minute and
+needs a configured `linux-release` build. It is a check, not a build: the
+shipped Windows extension always comes from CI or a Visual Studio build.
+
 ## Trying the beat tracker from the command line
 
 The tests download the Beat This! model into `build/<preset>/_models/`. Then:
