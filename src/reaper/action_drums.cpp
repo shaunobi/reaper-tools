@@ -3,6 +3,7 @@
 // apply the result on the main thread inside one undo block.
 
 #include "actions.h"
+#include "crash_guard.h"
 #include "host.h"
 #include "item_audio.h"
 #include "models.h"
@@ -17,6 +18,7 @@
 #include <cstring>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -159,12 +161,18 @@ struct DrumJob : srt::Job {
     }
     void run(srt::Progress& p) override {
         p.set(0.01, "loading model");
-        srt::BeatTrackerConfig cfg;
-        cfg.modelPath = modelPath;
-        srt::BeatTracker tracker(cfg);
-        srt::BeatDetectOptions opt;
-        opt.tempoHintBpm = ctx.tempoHint;
-        result = srt::detectBeats(tracker, audio, opt, &p);
+        std::string fault;
+        const bool ok = runGuarded(
+            [&] {
+                srt::BeatTrackerConfig cfg;
+                cfg.modelPath = modelPath;
+                srt::BeatTracker tracker(cfg);
+                srt::BeatDetectOptions opt;
+                opt.tempoHintBpm = ctx.tempoHint;
+                result = srt::detectBeats(tracker, audio, opt, &p);
+            },
+            fault);
+        if (!ok) throw std::runtime_error(fault);
     }
 };
 

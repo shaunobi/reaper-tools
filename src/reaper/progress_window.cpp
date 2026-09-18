@@ -154,8 +154,12 @@ void progressWindowRefresh(srt::JobRunner& runner) {
         return;
     }
     if (!g_hwnd) {
+        console("jobs window: creating");
         g_hwnd = CreateDialogParam(g_hInstance, MAKEINTRESOURCE(IDD_SRT_PROGRESS), GetMainHwnd(), dialogProc, 0);
-        if (!g_hwnd) return;
+        if (!g_hwnd) {
+            console("jobs window: could not be created; jobs still run, progress is only reported to the console");
+            return;
+        }
         g_shownRows = static_cast<size_t>(-1); // force a layout pass
     }
     updateControls();

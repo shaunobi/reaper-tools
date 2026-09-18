@@ -12,7 +12,8 @@ set(_sources
   models.cpp
   host.cpp
   progress_window.cpp
-  runtime_loader.cpp)
+  runtime_loader.cpp
+  crash_guard.cpp)
 
 if(WIN32)
   list(APPEND _sources resource.rc)

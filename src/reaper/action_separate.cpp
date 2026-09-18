@@ -3,6 +3,7 @@
 // on a worker; the folder of tracks is built on the main thread afterwards.
 
 #include "actions.h"
+#include "crash_guard.h"
 #include "host.h"
 #include "item_audio.h"
 #include "models.h"
@@ -14,6 +15,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -60,12 +62,19 @@ struct SeparateJob : srt::Job {
     void run(srt::Progress& p) override {
         const auto t0 = std::chrono::steady_clock::now();
         p.set(0.01, "loading model");
-        srt::SeparatorConfig cfg;
-        cfg.modelPath = modelPath;
-        srt::StemSeparator sep(cfg);
-        provider = sep.provider();
-        stemNames = sep.config().stemNames;
-        std::vector<srt::AudioBuffer> stems = sep.separate(audio, &p);
+        std::vector<srt::AudioBuffer> stems;
+        std::string fault;
+        const bool ok = runGuarded(
+            [&] {
+                srt::SeparatorConfig cfg;
+                cfg.modelPath = modelPath;
+                srt::StemSeparator sep(cfg);
+                provider = sep.provider();
+                stemNames = sep.config().stemNames;
+                stems = sep.separate(audio, &p);
+            },
+            fault);
+        if (!ok) throw std::runtime_error(fault);
         if (stems.size() != outputs.size()) {
             // Stem count comes from the model; make sure every stem has a file name.
             const std::filesystem::path dir = outputs.front().parent_path();
