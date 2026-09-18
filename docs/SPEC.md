@@ -420,14 +420,21 @@ a real project.
 
 ## 11. Release and distribution
 
-1. Bump `version.txt`, tag `vX.Y.Z`, push the tag.
+1. Bump `version.txt`, tag `vX.Y.Z` (the tag message becomes the ReaPack
+   changelog), push the tag.
 2. GitHub Actions builds Windows x64 and macOS arm64, runs unit tests and
    model correctness tests, packages the extension plus runtime libraries,
-   and attaches the binaries and model files to a GitHub release.
-3. The workflow regenerates `index.xml` (ReaPack index) in the repository
-   root, listing the new version for both platforms, and commits it.
+   and attaches both zips and every individual file to a draft GitHub
+   release. Publish the draft after a quick check.
+3. The workflow runs `tools/reapack_index.py` to add the version to
+   `index.xml` in the repository root, listing every file per platform with
+   its release URL, and pushes that to `main`.
 4. Users import `https://raw.githubusercontent.com/shaunobi/reaper-tools/main/index.xml`
    into ReaPack once and get updates like any other package.
+
+Model files are not attached to releases yet; the extension downloads them
+from the exporters' Hugging Face repositories (URLs and checksums are
+compiled in). Mirroring them to a release is a small follow-up.
 
 ReaPack installs into `UserPlugins/`. The runtime libraries are listed as
 additional files of the same package so they land next to the extension.

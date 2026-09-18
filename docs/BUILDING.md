@@ -99,3 +99,17 @@ cannot download.
 python -m venv .venv && .venv/bin/pip install onnx numpy
 .venv/bin/python tools/make_smoke_model.py
 ```
+
+## Releasing
+
+```
+echo 0.1.0 > version.txt && git commit -am "Version 0.1.0"
+git tag -a v0.1.0 -m "First internal release: About, Fit drums to grid, Conform drum bars, Separate stems"
+git push origin main v0.1.0
+```
+
+CI builds both platforms, attaches the files to a draft GitHub release, and
+adds the version to `index.xml` on `main`. Publish the draft release, then
+anyone can import
+`https://raw.githubusercontent.com/shaunobi/reaper-tools/main/index.xml`
+into ReaPack (Extensions > ReaPack > Import repositories).

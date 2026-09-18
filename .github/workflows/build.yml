@@ -63,21 +63,53 @@ jobs:
           path: dist/UserPlugins
 
   release:
-    name: GitHub release
+    name: GitHub release and ReaPack index
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [linux, windows, macos]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with: { path: artifacts }
-      - name: Zip
+      - name: Collect release files
+        id: collect
         run: |
-          cd artifacts
-          (cd reaper_srt-windows-x64 && zip -r ../reaper_srt-${GITHUB_REF_NAME}-windows-x64.zip .)
-          (cd reaper_srt-macos-arm64 && zip -r ../reaper_srt-${GITHUB_REF_NAME}-macos-arm64.zip .)
+          set -e
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p release
+          (cd artifacts/reaper_srt-windows-x64 && zip -r ../../release/reaper_srt-${GITHUB_REF_NAME}-windows-x64.zip .)
+          (cd artifacts/reaper_srt-macos-arm64 && zip -r ../../release/reaper_srt-${GITHUB_REF_NAME}-macos-arm64.zip .)
+          # Individual files for ReaPack, which downloads each file by URL.
+          cp artifacts/reaper_srt-windows-x64/* release/
+          cp artifacts/reaper_srt-macos-arm64/* release/
+          WIN=$(ls artifacts/reaper_srt-windows-x64 | paste -sd, -)
+          MAC=$(ls artifacts/reaper_srt-macos-arm64 | paste -sd, -)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "win=$WIN" >> "$GITHUB_OUTPUT"
+          echo "mac=$MAC" >> "$GITHUB_OUTPUT"
+          ls -la release
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: artifacts/*.zip
+          files: release/*
+      - name: Update ReaPack index on main
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -l --format='%(contents)' "${GITHUB_REF_NAME}" > changes.txt || true
+          python3 tools/reapack_index.py --index index.xml \
+            --version "${{ steps.collect.outputs.version }}" \
+            --author "${GITHUB_REPOSITORY_OWNER}" \
+            --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}" \
+            --changelog changes.txt \
+            --files "win64=${{ steps.collect.outputs.win }}" \
+            --files "darwin-arm64=${{ steps.collect.outputs.mac }}"
+          git add index.xml
+          git commit -m "ReaPack index: add ${GITHUB_REF_NAME}" || echo "index unchanged"
+          git push origin HEAD:main
