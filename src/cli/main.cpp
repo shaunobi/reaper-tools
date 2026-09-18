@@ -10,6 +10,7 @@
 #include "srt/onnx.h"
 #include "srt/onset.h"
 #include "srt/resample.h"
+#include "srt/separator.h"
 #include "srt/smoke_model.h"
 #include "srt/version.h"
 #include "srt/wav.h"
@@ -17,6 +18,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <cstring>
 #include <iostream>
@@ -36,7 +38,9 @@ int usage() {
               "                                  [--tempo <bpm>] [--minimal] [--no-refine] [--csv]\n"
               "                                  detect beats and downbeats; --tempo constrains the decoder\n"
               "                                  to +/-15% of the given tempo, --minimal uses plain peak picking\n"
-              "  srt_cli mel <file.wav> <out.f32>  write the log-mel spectrogram (frames x 128 float32)\n");
+              "  srt_cli mel <file.wav> <out.f32>  write the log-mel spectrogram (frames x 128 float32)\n"
+              "  srt_cli separate <file.wav> --model <bs-roformer.onnx> [--out-dir <dir>] [--provider ...]\n"
+              "                                  write one 32-bit float WAV per stem next to the input\n");
     return 2;
 }
 
@@ -128,6 +132,40 @@ int main(int argc, char** argv) {
                 double next = i + 1 < downbeats.size() ? downbeats[i + 1] - downbeats[i] : 0.0;
                 if (next > 0.0) std::printf("  bar %3zu  %9.4f s  (bar length %.4f s)\n", i + 1, downbeats[i], next);
                 else std::printf("  bar %3zu  %9.4f s\n", i + 1, downbeats[i]);
+            }
+            return 0;
+        }
+        if (cmd == "separate") {
+            if (argc < 3) return usage();
+            std::string wavPath = argv[2], modelPath, outDir;
+            std::vector<srt::Provider> pref = srt::OnnxRuntime::availableProviders();
+            for (int i = 3; i < argc; ++i) {
+                std::string a = argv[i];
+                if (a == "--model" && i + 1 < argc) modelPath = argv[++i];
+                else if (a == "--out-dir" && i + 1 < argc) outDir = argv[++i];
+                else if (a == "--provider" && i + 1 < argc) pref = {parseProvider(argv[++i])};
+                else return usage();
+            }
+            if (modelPath.empty()) {
+                std::fprintf(stderr, "error: --model is required\n");
+                return 2;
+            }
+            srt::AudioBuffer audio = srt::readWav(wavPath);
+            srt::SeparatorConfig cfg;
+            cfg.modelPath = modelPath;
+            cfg.providers = pref;
+            srt::StemSeparator sep(cfg);
+            std::printf("provider: %s, %zu stems, chunk %.1f s\n", srt::toString(sep.provider()), sep.numStems(),
+                        sep.chunkSamples() / static_cast<double>(cfg.sampleRate));
+            srt::Progress progress;
+            std::vector<srt::AudioBuffer> stems = sep.separate(audio, &progress);
+            std::filesystem::path in(wavPath);
+            std::filesystem::path dir = outDir.empty() ? in.parent_path() : std::filesystem::path(outDir);
+            std::filesystem::create_directories(dir.empty() ? "." : dir);
+            for (size_t s = 0; s < stems.size(); ++s) {
+                std::filesystem::path out = dir / (in.stem().string() + " - " + sep.config().stemNames[s] + ".wav");
+                srt::writeWav(out, stems[s]);
+                std::printf("wrote %s\n", out.string().c_str());
             }
             return 0;
         }

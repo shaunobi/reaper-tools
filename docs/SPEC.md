@@ -273,11 +273,15 @@ precomputed STFT (real and imaginary parts) of an 8-second stereo chunk at
 44.1 kHz. Output is the masked spectrogram per stem. The host performs the
 inverse STFT.
 
-1. Split the input into 8-second chunks with 50% overlap.
-2. For each chunk: STFT (parameters from the model's manifest), run the
-   model, inverse STFT per stem.
-3. Overlap-add the stems with a windowed crossfade.
-4. Progress reported per chunk.
+1. Split the input into 8-second chunks with 50% overlap (the chunk length
+   is read from the model's input shape: (frames - 1) x hop).
+2. For each chunk: STFT (n_fft 2048, hop 441, periodic Hann, reflect-padded
+   centred frames, unnormalised), run the model, inverse STFT per stem with
+   window-envelope normalisation.
+3. Overlap-add the stems with a Hann crossfade. The first chunk keeps a flat
+   start and the last a flat end so the file's edges are not attenuated.
+4. Progress reported per chunk. One chunk takes about 38 s on a 4-core CPU
+   with the half-precision weights and about a second on a graphics card.
 
 The STFT and inverse STFT are implemented in srt_core with PocketFFT and
 must match PyTorch's `torch.stft` behaviour for the model's window, hop and
@@ -434,7 +438,7 @@ additional files of the same package so they land next to the extension.
 | 1 | Detection in srt_cli | Beat This! running in C++, front end verified against Python, onset refinement, DBN decoding with tempo prior. `srt_cli beats file.wav` prints downbeats and tempo. Accuracy tests pass on Shaun's stems. Status: model, front end, chunking, minimal peak picking, DBN decoding with tempo prior, onset refinement, tempo fit and confidence scoring are done and verified on a synthetic clip. Only the real-stem accuracy tests remain (waiting on test material). |
 | 2 | Fit drums to grid | Action wired to REAPER. Manual test on a real project. Status: written and compiling on all platforms; not yet run inside REAPER. See docs/TESTING.md. |
 | 3 | Conform drum bars | Action wired. Manual test. First tagged release `v0.1.0` for internal use. Status: written alongside milestone 2 (shares the detection job); not yet run inside REAPER. |
-| 4 | Separation in srt_cli | BS-RoFormer export, STFT front end verified, chunking and overlap-add, `srt_cli separate file.wav`. Correctness test passes. |
+| 4 | Separation in srt_cli | BS-RoFormer export, STFT front end verified, chunking and overlap-add, `srt_cli separate file.wav`. Correctness test passes. Status: done. The C++ output matches the Python reference to under 2e-3 on a synthetic mix; the chunk overlap-add keeps flat edges on the first and last chunk so file ends are not attenuated (an improvement over the reference script). |
 | 5 | Separate stems | Action wired, model download flow, folder and track creation. Release `v0.2.0`, public ReaPack index. |
 | 6 | macOS | Apple Silicon build with CoreML, same tests. Release `v0.3.0`. |
 
