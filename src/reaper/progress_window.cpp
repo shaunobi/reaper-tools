@@ -9,6 +9,10 @@
 #include "resource.h"
 #include "wdltypes.h"
 
+#ifdef _WIN32
+#include <commctrl.h> // PBM_* messages for msctls_progress32
+#endif
+
 #include <algorithm>
 #include <cstdio>
 #include <string>
