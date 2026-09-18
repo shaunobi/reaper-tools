@@ -66,7 +66,7 @@ Every entry here was agreed in conversation. Change them only on purpose.
 | Selection scope | Selected media items. With several selected, each is processed separately. |
 | Stem output placement | New tracks directly below the source track, inside a folder, one track per stem, items at the same position and length as the source. Original item and track untouched. |
 | Stem file format | 32-bit float WAV in the project media folder, at the source item's sample rate. |
-| Resampling | REAPER's own resampler (extension SDK). Resample to the model rate on the way in, back to the source rate on the way out. |
+| Resampling | r8brain-free-src (MIT) inside srt_core, so the command-line harness and the extension produce identical results and the tests cover the real path. Resample to the model rate on the way in, back to the source rate on the way out. (Changed from "REAPER's resampler" during milestone 1: REAPER's resampler only exists inside REAPER and could not be tested.) |
 | What is separated | The visible portion of the active take. Item volume, fades, take effects and pitch/rate settings are ignored; stems are made from the raw source audio. |
 | Alignment target | The project tempo map, which is already correct when the actions run. The item is conformed to the map, never the other way around. |
 | Alignment resolution | Whole bars (downbeats). Hard snap, no strength setting. |
@@ -400,6 +400,7 @@ a real project.
   Shipped next to the extension as `onnxruntime.dll` / `libonnxruntime.dylib`
   and `DirectML.dll`. ReaPack installs them alongside.
 - **PocketFFT** (BSD 3-Clause) for FFTs.
+- **r8brain-free-src** (MIT) for sample-rate conversion.
 - **nlohmann/json** (MIT) for manifests.
 - **libcurl** via the platform's system library (WinHTTP on Windows,
   NSURLSession or libcurl on macOS) for model downloads.
@@ -430,7 +431,7 @@ additional files of the same package so they land next to the extension.
 | # | Milestone | Deliverable |
 |---|---|---|
 | 0 | Foundation | Repo layout, CMake, CI building an empty extension on both platforms that registers one "SRT: About" action. Background job runner and progress window. ONNX Runtime linked and a "hello" model running on DirectML. |
-| 1 | Detection in srt_cli | Beat This! running in C++, front end verified against Python, onset refinement, DBN decoding with tempo prior. `srt_cli beats file.wav` prints downbeats and tempo. Accuracy tests pass on Shaun's stems. |
+| 1 | Detection in srt_cli | Beat This! running in C++, front end verified against Python, onset refinement, DBN decoding with tempo prior. `srt_cli beats file.wav` prints downbeats and tempo. Accuracy tests pass on Shaun's stems. Status: model, front end, chunking, minimal peak picking, onset refinement and tempo fit are done and verified against the Python reference on a synthetic clip. DBN decoding and the real-stem accuracy tests remain. |
 | 2 | Fit drums to grid | Action wired to REAPER. Manual test on a real project. |
 | 3 | Conform drum bars | Action wired. Manual test. First tagged release `v0.1.0` for internal use. |
 | 4 | Separation in srt_cli | BS-RoFormer export, STFT front end verified, chunking and overlap-add, `srt_cli separate file.wav`. Correctness test passes. |

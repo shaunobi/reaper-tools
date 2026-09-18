@@ -8,3 +8,7 @@
 	path = third_party/pocketfft
 	url = https://github.com/mreineck/pocketfft.git
 	branch = cpp
+[submodule "third_party/r8brain"]
+	path = third_party/r8brain
+	url = https://github.com/avaneev/r8brain-free-src.git
+	branch = master

@@ -55,6 +55,27 @@ third_party  git submodules: reaper-sdk, WDL, pocketfft
 cmake        dependency fetching and helpers
 ```
 
+## Trying the beat tracker from the command line
+
+The tests download the Beat This! model into `build/<preset>/_models/`. Then:
+
+```
+build/linux-release/src/cli/srt_cli beats my-drums.wav --model build/linux-release/_models/beat-this-final0.onnx
+```
+
+prints the execution provider used, the fitted tempo, and one line per bar
+with its downbeat time. Add `--csv` for one line per beat with a downbeat
+flag, or `--no-refine` to see the raw 20 ms model positions without onset
+refinement.
+
+## Regenerating the reference data for the beat tracker tests
+
+```
+.venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch torchaudio
+.venv/bin/pip install beat_this onnxruntime numpy
+.venv/bin/python tools/make_beat_reference.py build/linux-release/_models/beat-this-final0.onnx
+```
+
 ## Regenerating the smoke model
 
 ```

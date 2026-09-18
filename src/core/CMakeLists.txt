@@ -6,6 +6,10 @@ add_library(srt_core STATIC
   src/log.cpp
   src/onnx.cpp
   src/jobs.cpp
+  src/resample.cpp
+  src/mel.cpp
+  src/beat_tracker.cpp
+  src/onset.cpp
 )
 add_library(srt::core ALIAS srt_core)
 
@@ -16,7 +20,7 @@ target_include_directories(srt_core
 
 target_link_libraries(srt_core
   PUBLIC onnxruntime::onnxruntime nlohmann_json::nlohmann_json
-  PRIVATE pocketfft::pocketfft)
+  PRIVATE pocketfft::pocketfft r8brain::r8brain)
 
 find_package(Threads REQUIRED)
 target_link_libraries(srt_core PUBLIC Threads::Threads)
