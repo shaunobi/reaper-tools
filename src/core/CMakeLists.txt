@@ -15,6 +15,8 @@ add_library(srt_core STATIC
   src/grid_fit.cpp
   src/stft.cpp
   src/separator.cpp
+  src/sha256.cpp
+  src/download_common.cpp
 )
 add_library(srt::core ALIAS srt_core)
 
@@ -29,6 +31,21 @@ target_link_libraries(srt_core
 
 find_package(Threads REQUIRED)
 target_link_libraries(srt_core PUBLIC Threads::Threads)
+
+# Download back end: WinHTTP on Windows, libcurl where available, else a stub.
+if(WIN32)
+  target_sources(srt_core PRIVATE src/download_winhttp.cpp)
+  target_link_libraries(srt_core PRIVATE winhttp)
+else()
+  find_package(CURL)
+  if(CURL_FOUND)
+    target_sources(srt_core PRIVATE src/download_curl.cpp)
+    target_link_libraries(srt_core PRIVATE CURL::libcurl)
+  else()
+    message(WARNING "libcurl not found: model downloads will be unavailable in this build")
+    target_sources(srt_core PRIVATE src/download_stub.cpp)
+  endif()
+endif()
 
 # Embed the smoke model so the extension can self-test without any file on disk.
 set(_smoke_header "${CMAKE_CURRENT_BINARY_DIR}/generated/srt/smoke_model.h")

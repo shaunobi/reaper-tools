@@ -334,17 +334,21 @@ chunk size, stem names, version and SHA-256 checksum.
 On first use of an action whose model is missing, SRT shows a dialog: model
 name, size, source URL, and Download / Cancel. Download runs as a background
 job with progress, verifies the checksum, and then the original action runs.
+Downloads go to a `.part` file first and are renamed only after the checksum
+matches, so a half-finished or corrupted file is never mistaken for a model.
+Implementation: WinHTTP on Windows, libcurl on macOS and Linux.
 
 Model files are attached to the GitHub release that matches the extension
 version. The extension knows the exact filenames and checksums it was built
 with, so a version mismatch is impossible.
 
-Planned models for the first release:
+Models for the first release (both hosted on Hugging Face by their exporters;
+mirroring them to this project's GitHub releases is still to do):
 
 | ID | Purpose | Size | Source |
 |---|---|---|---|
-| `bsroformer-4s-v1` | Stem separation | ~257 MB (fp16) | ZFTurbo checkpoint, MIT |
-| `beatthis-final0-v1` | Beat and downbeat tracking | ~82 MB (fp32) | CPJKU checkpoint, MIT |
+| `bsroformer-4s-v1` | Stem separation | 269 MB (fp16) | ZFTurbo checkpoint, host-STFT ONNX export by silverdaw, MIT |
+| `beatthis-final0-v1` | Beat and downbeat tracking | 82 MB (fp32) | CPJKU checkpoint, ONNX export by aaatmy, MIT |
 
 ---
 
@@ -439,7 +443,7 @@ additional files of the same package so they land next to the extension.
 | 2 | Fit drums to grid | Action wired to REAPER. Manual test on a real project. Status: written and compiling on all platforms; not yet run inside REAPER. See docs/TESTING.md. |
 | 3 | Conform drum bars | Action wired. Manual test. First tagged release `v0.1.0` for internal use. Status: written alongside milestone 2 (shares the detection job); not yet run inside REAPER. |
 | 4 | Separation in srt_cli | BS-RoFormer export, STFT front end verified, chunking and overlap-add, `srt_cli separate file.wav`. Correctness test passes. Status: done. The C++ output matches the Python reference to under 2e-3 on a synthetic mix; the chunk overlap-add keeps flat edges on the first and last chunk so file ends are not attenuated (an improvement over the reference script). |
-| 5 | Separate stems | Action wired, model download flow, folder and track creation. Release `v0.2.0`, public ReaPack index. |
+| 5 | Separate stems | Action wired, model download flow, folder and track creation. Release `v0.2.0`, public ReaPack index. Status: action and download flow written and compiling on all platforms (WinHTTP on Windows, libcurl elsewhere, SHA-256 verified); not yet run inside REAPER. Release and ReaPack index remain. |
 | 6 | macOS | Apple Silicon build with CoreML, same tests. Release `v0.3.0`. |
 
 ---

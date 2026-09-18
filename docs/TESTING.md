@@ -9,9 +9,9 @@ it open.
 1. Download the `reaper_srt-windows-x64` artifact from the latest CI run
    (or build with `docs/BUILDING.md`) and copy the contents of its
    `UserPlugins` folder into REAPER's `UserPlugins` folder.
-2. Download the beat model and save it as
-   `<resource path>/SRT/models/beatthis-final0-v1/beat-this-final0.onnx`
-   (the actions print the exact path and URL if it is missing).
+2. Restart REAPER. Models download on first use: the action asks first,
+   shows progress in the jobs window, and verifies the file. If the download
+   cannot run, the console prints the URL and the exact path to save to.
 3. Restart REAPER. The console should show `SRT: loaded version ...`.
 
 ## SRT: About
@@ -55,6 +55,34 @@ anywhere on a track, no stretch markers.
 3. Undo: back to the fitted state with two markers.
 4. Run it on an item that was never fitted: it fits and conforms in one go.
 
+## SRT: Separate stems
+
+Setup: a full mix (a few minutes long) on a track. Keep the ReaScript
+console open.
+
+1. Select the item, run the action. The first time, a dialog asks to
+   download the 269 MB model; accept. The jobs window shows the download
+   with a megabyte counter, then "verifying checksum", then the separation
+   starts by itself.
+2. While it runs, keep editing elsewhere in the project. REAPER must stay
+   responsive. Cancel from the jobs window once to check that nothing is
+   written and nothing changes; then run it again.
+3. When it finishes, a folder track named "<take> stems" appears directly
+   below the source track with four child tracks: drums, bass, other,
+   vocals. Each holds one item at exactly the source item's position and
+   length. The source item and track are untouched.
+4. The console line reports the time taken and the provider. On the studio
+   machine it must say DirectML; if it says CPU, DirectML failed and the
+   run will have taken minutes rather than seconds.
+5. Solo the drums track: it should be clean drums. Play all four stems
+   together against the muted source: they should sum to the original.
+6. Undo once: the folder and its tracks disappear (the WAV files stay in the
+   project media folder).
+7. Run it on an item that is a trimmed section of a longer file: the stems
+   cover only the visible section.
+8. Run it with two items selected: two folders, one per item, each below
+   its own source track.
+
 ## Things to write down for Shaun and Dean
 
 - The detected tempo and bar count for each real stem, and whether they were
@@ -63,3 +91,6 @@ anywhere on a track, no stretch markers.
   ear (a few milliseconds is fine, tens of milliseconds is a bug).
 - How long a five-minute stem takes on the studio machine, and which
   provider the console reported.
+- For separation: how the drums stem compares with what UVR gives you on
+  the same song. That is the quality bar the model choice is measured
+  against.

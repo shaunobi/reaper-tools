@@ -10,6 +10,7 @@ namespace {
 
 ActionDef g_actions[] = {
     {"SRT_ABOUT", "SRT: About (version, runtime check)", &actionAbout},
+    {"SRT_SEPARATE_STEMS", "SRT: Separate stems (drums, bass, other, vocals from selected items)", &actionSeparateStems},
     {"SRT_FIT_DRUMS_TO_GRID", "SRT: Fit drums to grid (first and last bar of selected items)", &actionFitDrumsToGrid},
     {"SRT_CONFORM_DRUM_BARS", "SRT: Conform drum bars (stretch marker on every downbeat of selected items)",
      &actionConformDrumBars},

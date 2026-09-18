@@ -316,15 +316,12 @@ void onJobDone(const srt::JobStatus& st, srt::Job& base) {
     UpdateArrange();
 }
 
-void runDrumAction(bool conform) {
+void runDrumActionWithModel(bool conform, const std::filesystem::path& model) {
     const int count = CountSelectedMediaItems(nullptr);
     if (count == 0) {
         console("select at least one drum item first");
         return;
     }
-    std::filesystem::path model = requireModel(kBeatThisModel);
-    if (model.empty()) return;
-
     std::vector<MediaItem*> items;
     for (int i = 0; i < count; ++i) items.push_back(GetSelectedMediaItem(nullptr, i));
 
@@ -343,6 +340,14 @@ void runDrumAction(bool conform) {
                 fmt(job->audio.durationSeconds(), 1) + " s of audio, project tempo " + fmt(job->ctx.tempoHint, 1) + " BPM)");
         jobs().submit(job, &onJobDone);
     }
+}
+
+void runDrumAction(bool conform) {
+    if (CountSelectedMediaItems(nullptr) == 0) {
+        console("select at least one drum item first");
+        return;
+    }
+    ensureModel(kBeatThisModel, [conform](const std::filesystem::path& model) { runDrumActionWithModel(conform, model); });
 }
 
 } // namespace

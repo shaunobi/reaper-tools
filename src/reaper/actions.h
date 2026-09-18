@@ -21,5 +21,6 @@ void unregisterActions();
 void actionAbout();
 void actionFitDrumsToGrid();
 void actionConformDrumBars();
+void actionSeparateStems();
 
 } // namespace srt::reaper

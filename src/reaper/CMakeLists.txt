@@ -6,6 +6,7 @@ set(_sources
   actions.cpp
   action_about.cpp
   action_drums.cpp
+  action_separate.cpp
   item_audio.cpp
   timeline.cpp
   models.cpp

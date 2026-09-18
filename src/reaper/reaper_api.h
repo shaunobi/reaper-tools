@@ -41,6 +41,19 @@
 #define REAPERAPI_WANT_TimeMap_GetMeasureInfo
 #define REAPERAPI_WANT_TimeMap_GetDividedBpmAtTime
 #define REAPERAPI_WANT_format_timestr_pos
+#define REAPERAPI_WANT_InsertTrackAtIndex
+#define REAPERAPI_WANT_GetTrack
+#define REAPERAPI_WANT_GetMediaTrackInfo_Value
+#define REAPERAPI_WANT_SetMediaTrackInfo_Value
+#define REAPERAPI_WANT_GetSetMediaTrackInfo_String
+#define REAPERAPI_WANT_AddMediaItemToTrack
+#define REAPERAPI_WANT_AddTakeToMediaItem
+#define REAPERAPI_WANT_PCM_Source_CreateFromFile
+#define REAPERAPI_WANT_SetMediaItemTake_Source
+#define REAPERAPI_WANT_SetMediaItemTakeInfo_Value
+#define REAPERAPI_WANT_GetSetMediaItemTakeInfo_String
+#define REAPERAPI_WANT_GetProjectPathEx
+#define REAPERAPI_WANT_TrackList_AdjustWindows
 
 #include "reaper_plugin.h"
 #include "reaper_plugin_functions.h"

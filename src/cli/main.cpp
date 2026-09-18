@@ -3,6 +3,8 @@
 // without REAPER.
 
 #include "srt/beat_detect.h"
+#include "srt/download.h"
+#include "srt/sha256.h"
 #include "srt/beat_tracker.h"
 #include "srt/jobs.h"
 #include "srt/log.h"
@@ -15,8 +17,10 @@
 #include "srt/version.h"
 #include "srt/wav.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <thread>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -40,7 +44,9 @@ int usage() {
               "                                  to +/-15% of the given tempo, --minimal uses plain peak picking\n"
               "  srt_cli mel <file.wav> <out.f32>  write the log-mel spectrogram (frames x 128 float32)\n"
               "  srt_cli separate <file.wav> --model <bs-roformer.onnx> [--out-dir <dir>] [--provider ...]\n"
-              "                                  write one 32-bit float WAV per stem next to the input\n");
+              "                                  write one 32-bit float WAV per stem next to the input\n"
+              "  srt_cli download <url> <dest> [--sha256 <hex>]   download a file with progress and verify it\n"
+              "  srt_cli sha256 <file>           print the SHA-256 of a file\n");
     return 2;
 }
 
@@ -133,6 +139,38 @@ int main(int argc, char** argv) {
                 if (next > 0.0) std::printf("  bar %3zu  %9.4f s  (bar length %.4f s)\n", i + 1, downbeats[i], next);
                 else std::printf("  bar %3zu  %9.4f s\n", i + 1, downbeats[i]);
             }
+            return 0;
+        }
+        if (cmd == "download") {
+            if (argc < 4) return usage();
+            std::string sha;
+            for (int i = 4; i < argc; ++i)
+                if (std::string(argv[i]) == "--sha256" && i + 1 < argc) sha = argv[++i];
+            srt::Progress progress;
+            std::string last;
+            std::thread reporter([&] {
+                while (progress.fraction() < 1.0) {
+                    std::string m = progress.message();
+                    if (m != last) { std::fprintf(stderr, "\r%s        ", m.c_str()); last = m; }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                }
+            });
+            try {
+                srt::downloadFile(argv[2], argv[3], &progress, sha);
+            } catch (...) {
+                progress.set(1.0);
+                reporter.join();
+                throw;
+            }
+            progress.set(1.0);
+            reporter.join();
+            std::fprintf(stderr, "\n");
+            std::printf("saved %s\n", argv[3]);
+            return 0;
+        }
+        if (cmd == "sha256") {
+            if (argc < 3) return usage();
+            std::printf("%s  %s\n", srt::sha256File(argv[2]).c_str(), argv[2]);
             return 0;
         }
         if (cmd == "separate") {

@@ -44,7 +44,8 @@ add_executable(srt_tests
   test_beat_dbn.cpp
   test_grid_fit.cpp
   test_stft.cpp
-  test_separator.cpp)
+  test_separator.cpp
+  test_sha256.cpp)
 target_link_libraries(srt_tests PRIVATE srt::core Catch2::Catch2WithMain)
 target_compile_definitions(srt_tests PRIVATE
   SRT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
