@@ -25,7 +25,8 @@ add_executable(srt_tests
   test_mel.cpp
   test_onset.cpp
   test_beat_tracker.cpp
-  test_beat_dbn.cpp)
+  test_beat_dbn.cpp
+  test_grid_fit.cpp)
 target_link_libraries(srt_tests PRIVATE srt::core Catch2::Catch2WithMain)
 target_compile_definitions(srt_tests PRIVATE
   SRT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"

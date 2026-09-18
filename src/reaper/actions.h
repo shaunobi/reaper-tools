@@ -19,5 +19,7 @@ void unregisterActions();
 
 // Individual actions, one per file.
 void actionAbout();
+void actionFitDrumsToGrid();
+void actionConformDrumBars();
 
 } // namespace srt::reaper

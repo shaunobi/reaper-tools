@@ -5,6 +5,10 @@ set(_sources
   reaper_api.cpp
   actions.cpp
   action_about.cpp
+  action_drums.cpp
+  item_audio.cpp
+  timeline.cpp
+  models.cpp
   host.cpp
   progress_window.cpp)
 

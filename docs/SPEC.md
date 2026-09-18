@@ -432,8 +432,8 @@ additional files of the same package so they land next to the extension.
 |---|---|---|
 | 0 | Foundation | Repo layout, CMake, CI building an empty extension on both platforms that registers one "SRT: About" action. Background job runner and progress window. ONNX Runtime linked and a "hello" model running on DirectML. |
 | 1 | Detection in srt_cli | Beat This! running in C++, front end verified against Python, onset refinement, DBN decoding with tempo prior. `srt_cli beats file.wav` prints downbeats and tempo. Accuracy tests pass on Shaun's stems. Status: model, front end, chunking, minimal peak picking, DBN decoding with tempo prior, onset refinement, tempo fit and confidence scoring are done and verified on a synthetic clip. Only the real-stem accuracy tests remain (waiting on test material). |
-| 2 | Fit drums to grid | Action wired to REAPER. Manual test on a real project. |
-| 3 | Conform drum bars | Action wired. Manual test. First tagged release `v0.1.0` for internal use. |
+| 2 | Fit drums to grid | Action wired to REAPER. Manual test on a real project. Status: written and compiling on all platforms; not yet run inside REAPER. See docs/TESTING.md. |
+| 3 | Conform drum bars | Action wired. Manual test. First tagged release `v0.1.0` for internal use. Status: written alongside milestone 2 (shares the detection job); not yet run inside REAPER. |
 | 4 | Separation in srt_cli | BS-RoFormer export, STFT front end verified, chunking and overlap-add, `srt_cli separate file.wav`. Correctness test passes. |
 | 5 | Separate stems | Action wired, model download flow, folder and track creation. Release `v0.2.0`, public ReaPack index. |
 | 6 | macOS | Apple Silicon build with CoreML, same tests. Release `v0.3.0`. |
@@ -463,6 +463,14 @@ assumption; correct any that are wrong.
    per user and survives REAPER updates.
 8. **Copyright holder for the BSD licence.** Assumed: "Shaunobi's Reaper
    Tools contributors". Replace with a name if preferred.
+9. **Undo when markers had to be cleared.** Clearing existing stretch
+   markers happens before the audio is read (the source range depends on
+   it), so an item that had markers produces two undo steps: "clear stretch
+   markers" and then the fit. Items without markers produce one.
+10. **Re-running on a fitted item.** The outermost two stretch markers are
+    taken as the first and last bar, so dragging either by hand and running
+    the action again re-fits to the adjusted ends. The bar count is
+    re-derived from the detected downbeats between them.
 
 ---
 
