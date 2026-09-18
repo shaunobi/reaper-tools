@@ -3,7 +3,11 @@
 
 #include "actions.h"
 #include "host.h"
+#include "runtime_loader.h"
 #include "srt/version.h"
+
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -33,6 +37,19 @@ extern "C" REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(REAPER_PLUGIN_H
     }
 
     srt::reaper::hostStartup(hInstance, rec);
+
+    // Bind the machine-learning runtime to the copies next to this extension
+    // before anything can touch it (see runtime_loader.h).
+    std::vector<std::string> report;
+    const bool runtimeOk = srt::reaper::loadRuntimeLibraries(hInstance, report);
+    for (const auto& line : report) srt::reaper::console("runtime: " + line);
+    if (!runtimeOk) {
+        srt::reaper::console("the ONNX Runtime library is missing or the wrong version; SRT actions are disabled");
+        srt::reaper::console("  reinstall SRT so that onnxruntime.dll, onnxruntime_providers_shared.dll and DirectML.dll sit next to reaper_srt.dll");
+        srt::reaper::hostShutdown();
+        return 0;
+    }
+
     srt::reaper::registerActions(rec);
     rec->Register("timer", reinterpret_cast<void*>(&onTimer));
     srt::reaper::console(std::string("loaded version ") + SRT_VERSION_STRING);

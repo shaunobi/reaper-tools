@@ -11,7 +11,8 @@ set(_sources
   timeline.cpp
   models.cpp
   host.cpp
-  progress_window.cpp)
+  progress_window.cpp
+  runtime_loader.cpp)
 
 if(WIN32)
   list(APPEND _sources resource.rc)
@@ -58,6 +59,14 @@ if(NOT WIN32)
   target_compile_definitions(reaper_srt PRIVATE SWELL_PROVIDED_BY_APP=1)
   target_include_directories(reaper_srt PRIVATE "${_rc_dir}")
   set_source_files_properties("${_rc_dir}/resource.rc_mac_dlg" PROPERTIES HEADER_FILE_ONLY TRUE)
+endif()
+
+if(WIN32)
+  # Delay-load the runtime so the extension can bind it to the copy next to
+  # itself at load time instead of whatever Windows finds first (see
+  # runtime_loader.h).
+  target_link_options(reaper_srt PRIVATE "/DELAYLOAD:onnxruntime.dll")
+  target_link_libraries(reaper_srt PRIVATE delayimp)
 endif()
 
 srt_copy_onnxruntime_next_to(reaper_srt)

@@ -4,6 +4,7 @@
 
 #include "actions.h"
 #include "host.h"
+#include "runtime_loader.h"
 #include "srt/onnx.h"
 #include "srt/version.h"
 
@@ -35,12 +36,18 @@ struct SmokeJob : srt::Job {
 } // namespace
 
 void actionAbout() {
-    std::ostringstream info;
-    info << "Shaunobi's Reaper Tools " << SRT_VERSION_STRING << ", REAPER " << GetAppVersion()
-         << ", ONNX Runtime " << srt::OnnxRuntime::version() << ", providers:";
-    for (srt::Provider p : srt::OnnxRuntime::availableProviders()) info << ' ' << srt::toString(p);
-    console(info.str());
+    console(std::string("Shaunobi's Reaper Tools ") + SRT_VERSION_STRING + ", REAPER " + GetAppVersion());
     console(std::string("resource path: ") + GetResourcePath());
+    for (const auto& line : runtimeModuleReport()) console("  " + line);
+    try {
+        std::ostringstream info;
+        info << "ONNX Runtime " << srt::OnnxRuntime::version() << ", providers:";
+        for (srt::Provider p : srt::OnnxRuntime::availableProviders()) info << ' ' << srt::toString(p);
+        console(info.str());
+    } catch (const std::exception& ex) {
+        console(std::string("runtime check FAILED before starting: ") + ex.what());
+        return;
+    }
 
     jobs().submit(std::make_shared<SmokeJob>(), [](const srt::JobStatus& st, srt::Job& job) {
         auto& smoke = static_cast<SmokeJob&>(job);
