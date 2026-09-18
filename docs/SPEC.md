@@ -431,7 +431,7 @@ additional files of the same package so they land next to the extension.
 | # | Milestone | Deliverable |
 |---|---|---|
 | 0 | Foundation | Repo layout, CMake, CI building an empty extension on both platforms that registers one "SRT: About" action. Background job runner and progress window. ONNX Runtime linked and a "hello" model running on DirectML. |
-| 1 | Detection in srt_cli | Beat This! running in C++, front end verified against Python, onset refinement, DBN decoding with tempo prior. `srt_cli beats file.wav` prints downbeats and tempo. Accuracy tests pass on Shaun's stems. Status: model, front end, chunking, minimal peak picking, onset refinement and tempo fit are done and verified against the Python reference on a synthetic clip. DBN decoding and the real-stem accuracy tests remain. |
+| 1 | Detection in srt_cli | Beat This! running in C++, front end verified against Python, onset refinement, DBN decoding with tempo prior. `srt_cli beats file.wav` prints downbeats and tempo. Accuracy tests pass on Shaun's stems. Status: model, front end, chunking, minimal peak picking, DBN decoding with tempo prior, onset refinement, tempo fit and confidence scoring are done and verified on a synthetic clip. Only the real-stem accuracy tests remain (waiting on test material). |
 | 2 | Fit drums to grid | Action wired to REAPER. Manual test on a real project. |
 | 3 | Conform drum bars | Action wired. Manual test. First tagged release `v0.1.0` for internal use. |
 | 4 | Separation in srt_cli | BS-RoFormer export, STFT front end verified, chunking and overlap-add, `srt_cli separate file.wav`. Correctness test passes. |

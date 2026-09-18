@@ -2,6 +2,7 @@
 // extension can do to audio is reachable from here so it can be tested
 // without REAPER.
 
+#include "srt/beat_detect.h"
 #include "srt/beat_tracker.h"
 #include "srt/jobs.h"
 #include "srt/log.h"
@@ -15,6 +16,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <cstring>
 #include <iostream>
@@ -31,8 +33,9 @@ int usage() {
               "  srt_cli smoke [model.onnx]      run the smoke model (embedded copy if no path)\n"
               "  srt_cli wavinfo <file.wav>      print channel count, rate and length\n"
               "  srt_cli beats <file.wav> --model <beat-this.onnx> [--provider cpu|directml|coreml]\n"
-              "                                  [--no-refine] [--csv]\n"
-              "                                  detect beats and downbeats; prints tempo and event times\n"
+              "                                  [--tempo <bpm>] [--minimal] [--no-refine] [--csv]\n"
+              "                                  detect beats and downbeats; --tempo constrains the decoder\n"
+              "                                  to +/-15% of the given tempo, --minimal uses plain peak picking\n"
               "  srt_cli mel <file.wav> <out.f32>  write the log-mel spectrogram (frames x 128 float32)\n");
     return 2;
 }
@@ -79,12 +82,15 @@ int main(int argc, char** argv) {
             if (argc < 3) return usage();
             std::string wavPath = argv[2], modelPath;
             std::vector<srt::Provider> pref = srt::OnnxRuntime::availableProviders();
-            bool refine = true, csv = false;
+            srt::BeatDetectOptions opt;
+            bool csv = false;
             for (int i = 3; i < argc; ++i) {
                 std::string a = argv[i];
                 if (a == "--model" && i + 1 < argc) modelPath = argv[++i];
                 else if (a == "--provider" && i + 1 < argc) pref = {parseProvider(argv[++i])};
-                else if (a == "--no-refine") refine = false;
+                else if (a == "--tempo" && i + 1 < argc) opt.tempoHintBpm = std::atof(argv[++i]);
+                else if (a == "--minimal") opt.useDbn = false;
+                else if (a == "--no-refine") opt.refineOnsets = false;
                 else if (a == "--csv") csv = true;
                 else return usage();
             }
@@ -97,34 +103,31 @@ int main(int argc, char** argv) {
             cfg.modelPath = modelPath;
             cfg.providers = pref;
             srt::BeatTracker tracker(cfg);
-            srt::BeatActivations act = tracker.activations(audio);
-            srt::BeatEvents ev = srt::pickPeaksMinimal(act);
-            std::vector<double> beats = ev.beats, downbeats = ev.downbeats;
-            if (refine) {
-                std::vector<float> mono = audio.mixToMono();
-                beats = srt::refineOnsets(mono, audio.sampleRate, beats);
-                downbeats = srt::refineOnsets(mono, audio.sampleRate, downbeats);
-            }
-            const double bpm = srt::estimateTempoBpm(ev.beats);
+            srt::BeatDetectResult r = srt::detectBeats(tracker, audio, opt);
             if (csv) {
                 std::printf("time,is_downbeat\n");
                 size_t d = 0;
-                for (size_t i = 0; i < beats.size(); ++i) {
+                for (size_t i = 0; i < r.events.beats.size(); ++i) {
                     bool isDown = false;
-                    while (d < ev.downbeats.size() && ev.downbeats[d] < ev.beats[i] - 1e-9) ++d;
-                    if (d < ev.downbeats.size() && std::fabs(ev.downbeats[d] - ev.beats[i]) < 1e-9) isDown = true;
-                    std::printf("%.6f,%d\n", beats[i], isDown ? 1 : 0);
+                    while (d < r.modelEvents.downbeats.size() && r.modelEvents.downbeats[d] < r.modelEvents.beats[i] - 1e-9) ++d;
+                    if (d < r.modelEvents.downbeats.size() && std::fabs(r.modelEvents.downbeats[d] - r.modelEvents.beats[i]) < 1e-9)
+                        isDown = true;
+                    std::printf("%.6f,%d\n", r.events.beats[i], isDown ? 1 : 0);
                 }
                 return 0;
             }
-            std::printf("provider: %s\n", srt::toString(tracker.provider()));
-            std::printf("tempo: %.2f BPM (fit over %zu beats)\n", bpm, ev.beats.size());
-            std::printf("beats: %zu, downbeats: %zu%s\n", beats.size(), downbeats.size(),
-                        refine ? " (onset-refined)" : "");
+            std::printf("provider: %s, decoder: %s%s\n", srt::toString(r.provider), opt.useDbn ? "DBN" : "peak picking",
+                        opt.tempoHintBpm > 0.0 ? (" with tempo prior " + std::to_string(opt.tempoHintBpm) + " BPM").c_str() : "");
+            std::printf("tempo: %.2f BPM (fit over %zu beats)\n", r.tempoBpm, r.modelEvents.beats.size());
+            std::printf("confidence: %s\n", srt::toString(r.confidence));
+            for (const auto& n : r.notes) std::printf("  note: %s\n", n.c_str());
+            std::printf("beats: %zu, downbeats: %zu%s\n", r.events.beats.size(), r.events.downbeats.size(),
+                        opt.refineOnsets ? " (onset-refined)" : "");
+            const auto& downbeats = r.events.downbeats;
             for (size_t i = 0; i < downbeats.size(); ++i) {
                 double next = i + 1 < downbeats.size() ? downbeats[i + 1] - downbeats[i] : 0.0;
-                std::printf("  bar %3zu  %9.4f s%s\n", i + 1, downbeats[i],
-                            next > 0.0 ? (std::string("  (bar length ") + std::to_string(next) + " s)").c_str() : "");
+                if (next > 0.0) std::printf("  bar %3zu  %9.4f s  (bar length %.4f s)\n", i + 1, downbeats[i], next);
+                else std::printf("  bar %3zu  %9.4f s\n", i + 1, downbeats[i]);
             }
             return 0;
         }

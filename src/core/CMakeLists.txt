@@ -10,6 +10,8 @@ add_library(srt_core STATIC
   src/mel.cpp
   src/beat_tracker.cpp
   src/onset.cpp
+  src/beat_dbn.cpp
+  src/beat_detect.cpp
 )
 add_library(srt::core ALIAS srt_core)
 
