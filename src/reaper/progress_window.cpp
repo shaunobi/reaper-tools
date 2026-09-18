@@ -1,3 +1,8 @@
+// Non-modal "SRT jobs" window built entirely from stock dialog controls
+// (static text, msctls_progress32, push buttons), the same way SWS builds
+// its dialogs, so it renders natively on Windows and through SWELL on macOS
+// and Linux with no custom drawing.
+
 #include "progress_window.h"
 
 #include "host.h"
@@ -18,133 +23,78 @@ namespace srt::reaper {
 
 namespace {
 
-constexpr int kRowHeight = 44;
-constexpr int kMargin = 10;
-constexpr int kButtonAreaHeight = 34;
-constexpr int kCancelBoxSize = 16;
+constexpr int kBarRange = 1000;
 
 HWND g_hwnd = nullptr;
 srt::JobRunner* g_runner = nullptr;
 std::vector<srt::JobStatus> g_rows;
+size_t g_shownRows = 0;
+std::vector<std::string> g_lastLabels(SRT_PROGRESS_ROWS);
 
-RECT rowRect(const RECT& client, size_t row) {
-    RECT r;
-    r.left = client.left + kMargin;
-    r.right = client.right - kMargin;
-    r.top = client.top + kMargin + static_cast<LONG>(row) * kRowHeight;
-    r.bottom = r.top + kRowHeight;
-    return r;
+void showRow(int row, bool show) {
+    const int cmd = show ? SW_SHOW : SW_HIDE;
+    ShowWindow(GetDlgItem(g_hwnd, IDC_SRT_LABEL0 + row), cmd);
+    ShowWindow(GetDlgItem(g_hwnd, IDC_SRT_BAR0 + row), cmd);
+    ShowWindow(GetDlgItem(g_hwnd, IDC_SRT_CANCEL0 + row), cmd);
 }
 
-RECT cancelBoxRect(const RECT& row) {
-    RECT r;
-    r.right = row.right;
-    r.left = r.right - kCancelBoxSize;
-    r.top = row.top + 2;
-    r.bottom = r.top + kCancelBoxSize;
-    return r;
-}
+// Shrinks the window so it ends just below the last visible row (or the
+// "more" line), and parks the Cancel all button at the bottom.
+void layout(size_t rows) {
+    RECT win, client;
+    GetWindowRect(g_hwnd, &win);
+    GetClientRect(g_hwnd, &client);
+    const int frameH = (win.bottom - win.top) - (client.bottom - client.top);
 
-void fill(HDC dc, const RECT& r, COLORREF color) {
-    HBRUSH b = CreateSolidBrush(color);
-    FillRect(dc, &r, b);
-    DeleteObject(b);
-}
+    // Bottom edge of the last used row, in client coordinates.
+    const int lastRow = static_cast<int>(std::max<size_t>(1, rows)) - 1;
+    RECT anchor;
+    GetWindowRect(GetDlgItem(g_hwnd, IDC_SRT_CANCEL0 + lastRow), &anchor);
+    POINT origin = {0, 0};
+    ClientToScreen(g_hwnd, &origin);
+    const int bottom = anchor.bottom - origin.y;
 
-void paint(HWND hwnd) {
-    PAINTSTRUCT ps;
-    HDC dc = BeginPaint(hwnd, &ps);
-    RECT client;
-    GetClientRect(hwnd, &client);
+    HWND more = GetDlgItem(g_hwnd, IDC_SRT_MORE);
+    HWND cancelAll = GetDlgItem(g_hwnd, IDC_SRT_CANCEL_ALL);
+    RECT moreRect, cancelRect;
+    GetWindowRect(more, &moreRect);
+    GetWindowRect(cancelAll, &cancelRect);
+    const int moreH = moreRect.bottom - moreRect.top;
+    const int cancelW = cancelRect.right - cancelRect.left, cancelH = cancelRect.bottom - cancelRect.top;
+    const int gap = 8;
 
-    const COLORREF bg = RGB(240, 240, 240);
-    const COLORREF text = RGB(20, 20, 20);
-    const COLORREF barBg = RGB(200, 200, 200);
-    const COLORREF barFg = RGB(70, 130, 220);
-    fill(dc, client, bg);
-
-    HFONT font = reinterpret_cast<HFONT>(SendMessage(hwnd, WM_GETFONT, 0, 0));
-    HGDIOBJ oldFont = font ? SelectObject(dc, font) : nullptr;
-    SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, text);
-
-    for (size_t i = 0; i < g_rows.size(); ++i) {
-        const srt::JobStatus& st = g_rows[i];
-        RECT row = rowRect(client, i);
-
-        char label[512];
-        std::snprintf(label, sizeof(label), "%s  %3d%%  %s", st.name.c_str(),
-                      static_cast<int>(st.fraction * 100.0 + 0.5), st.message.c_str());
-        RECT textRect = row;
-        textRect.bottom = row.top + 18;
-        textRect.right -= kCancelBoxSize + 6;
-        DrawText(dc, label, -1, &textRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
-
-        RECT bar = row;
-        bar.top = row.top + 22;
-        bar.bottom = bar.top + 12;
-        bar.right -= kCancelBoxSize + 6;
-        fill(dc, bar, barBg);
-        RECT done = bar;
-        done.right = bar.left + static_cast<LONG>((bar.right - bar.left) * std::clamp(st.fraction, 0.0, 1.0));
-        fill(dc, done, barFg);
-
-        RECT box = cancelBoxRect(row);
-        fill(dc, box, RGB(180, 60, 60));
-        SetTextColor(dc, RGB(255, 255, 255));
-        DrawText(dc, "x", -1, &box, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
-        SetTextColor(dc, text);
+    int y = bottom + gap;
+    const bool showMore = g_rows.size() > static_cast<size_t>(SRT_PROGRESS_ROWS);
+    if (showMore) {
+        SetWindowPos(more, nullptr, moreRect.left - origin.x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        y += moreH + gap;
     }
-    if (oldFont) SelectObject(dc, oldFont);
-    EndPaint(hwnd, &ps);
+    ShowWindow(more, showMore ? SW_SHOW : SW_HIDE);
+    SetWindowPos(cancelAll, nullptr, cancelRect.left - origin.x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    y += cancelH + gap;
+    (void)cancelW;
+
+    SetWindowPos(g_hwnd, nullptr, 0, 0, win.right - win.left, y + frameH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-void layout(HWND hwnd) {
-    RECT wr;
-    GetWindowRect(hwnd, &wr);
-    RECT cr;
-    GetClientRect(hwnd, &cr);
-    const int frameH = (wr.bottom - wr.top) - (cr.bottom - cr.top);
-    const int rows = static_cast<int>(std::max<size_t>(1, g_rows.size()));
-    const int wantClientH = kMargin + rows * kRowHeight + kButtonAreaHeight;
-    SetWindowPos(hwnd, nullptr, 0, 0, wr.right - wr.left, wantClientH + frameH,
-                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-    GetClientRect(hwnd, &cr);
-    HWND btn = GetDlgItem(hwnd, IDC_SRT_CANCEL_ALL);
-    if (btn) {
-        RECT br;
-        GetWindowRect(btn, &br);
-        const int bw = br.right - br.left, bh = br.bottom - br.top;
-        SetWindowPos(btn, nullptr, cr.right - kMargin - bw, cr.bottom - kMargin - bh, 0, 0,
-                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-    }
-    InvalidateRect(hwnd, nullptr, TRUE);
-}
-
-WDL_DLGRET dialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+WDL_DLGRET dialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM) {
     switch (msg) {
     case WM_INITDIALOG:
+        for (int i = 0; i < SRT_PROGRESS_ROWS; ++i) {
+            SendMessage(GetDlgItem(hwnd, IDC_SRT_BAR0 + i), PBM_SETRANGE, 0, MAKELPARAM(0, kBarRange));
+            SendMessage(GetDlgItem(hwnd, IDC_SRT_BAR0 + i), PBM_SETPOS, 0, 0);
+        }
         return 1;
-    case WM_PAINT:
-        paint(hwnd);
-        return 1;
-    case WM_ERASEBKGND:
-        return 1;
-    case WM_LBUTTONDOWN: {
-        RECT client;
-        GetClientRect(hwnd, &client);
-        POINT pt = {static_cast<LONG>(static_cast<short>(LOWORD(lParam))),
-                    static_cast<LONG>(static_cast<short>(HIWORD(lParam)))};
-        for (size_t i = 0; i < g_rows.size(); ++i) {
-            RECT box = cancelBoxRect(rowRect(client, i));
-            if (PtInRect(&box, pt) && g_runner) g_runner->cancel(g_rows[i].id);
+    case WM_COMMAND: {
+        const int id = LOWORD(wParam);
+        if (id == IDC_SRT_CANCEL_ALL && g_runner) g_runner->cancelAll();
+        else if (id == IDCANCEL) ShowWindow(hwnd, SW_HIDE);
+        else if (id >= IDC_SRT_CANCEL0 && id < IDC_SRT_CANCEL0 + SRT_PROGRESS_ROWS && g_runner) {
+            const size_t row = static_cast<size_t>(id - IDC_SRT_CANCEL0);
+            if (row < g_rows.size()) g_runner->cancel(g_rows[row].id);
         }
         return 0;
     }
-    case WM_COMMAND:
-        if (LOWORD(wParam) == IDC_SRT_CANCEL_ALL && g_runner) g_runner->cancelAll();
-        else if (LOWORD(wParam) == IDCANCEL) ShowWindow(hwnd, SW_HIDE);
-        return 0;
     case WM_CLOSE:
         ShowWindow(hwnd, SW_HIDE);
         return 0;
@@ -155,34 +105,57 @@ WDL_DLGRET dialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     return 0;
 }
 
+void updateControls() {
+    const size_t rows = std::min<size_t>(g_rows.size(), SRT_PROGRESS_ROWS);
+    for (size_t i = 0; i < static_cast<size_t>(SRT_PROGRESS_ROWS); ++i) {
+        if (i < rows) {
+            const srt::JobStatus& st = g_rows[i];
+            char label[512];
+            std::snprintf(label, sizeof(label), "%s  %d%%  %s", st.name.c_str(),
+                          static_cast<int>(st.fraction * 100.0 + 0.5), st.message.c_str());
+            if (g_lastLabels[i] != label) {
+                SetDlgItemText(g_hwnd, IDC_SRT_LABEL0 + static_cast<int>(i), label);
+                g_lastLabels[i] = label;
+            }
+            SendMessage(GetDlgItem(g_hwnd, IDC_SRT_BAR0 + static_cast<int>(i)), PBM_SETPOS,
+                        static_cast<WPARAM>(std::clamp(st.fraction, 0.0, 1.0) * kBarRange), 0);
+        } else if (!g_lastLabels[i].empty()) {
+            g_lastLabels[i].clear();
+        }
+    }
+    if (g_rows.size() > static_cast<size_t>(SRT_PROGRESS_ROWS)) {
+        char more[64];
+        std::snprintf(more, sizeof(more), "and %zu more queued", g_rows.size() - SRT_PROGRESS_ROWS);
+        SetDlgItemText(g_hwnd, IDC_SRT_MORE, more);
+    }
+    if (rows != g_shownRows) {
+        for (int i = 0; i < SRT_PROGRESS_ROWS; ++i) showRow(i, static_cast<size_t>(i) < rows);
+        g_shownRows = rows;
+        layout(rows);
+    }
+}
+
 } // namespace
 
 void progressWindowRefresh(srt::JobRunner& runner) {
     g_runner = &runner;
-    std::vector<srt::JobStatus> rows = runner.statuses();
     const bool hadRows = !g_rows.empty();
-    const size_t oldCount = g_rows.size();
-    g_rows = std::move(rows);
+    g_rows = runner.statuses();
 
     if (g_rows.empty()) {
-        if (g_hwnd && hadRows) ShowWindow(g_hwnd, SW_HIDE);
+        if (g_hwnd && hadRows) {
+            ShowWindow(g_hwnd, SW_HIDE);
+            g_shownRows = 0;
+        }
         return;
     }
     if (!g_hwnd) {
         g_hwnd = CreateDialogParam(g_hInstance, MAKEINTRESOURCE(IDD_SRT_PROGRESS), GetMainHwnd(), dialogProc, 0);
         if (!g_hwnd) return;
-        layout(g_hwnd);
-        ShowWindow(g_hwnd, SW_SHOWNA);
-        return;
+        g_shownRows = static_cast<size_t>(-1); // force a layout pass
     }
-    if (!hadRows) {
-        layout(g_hwnd);
-        ShowWindow(g_hwnd, SW_SHOWNA);
-    } else if (oldCount != g_rows.size()) {
-        layout(g_hwnd);
-    } else {
-        InvalidateRect(g_hwnd, nullptr, FALSE);
-    }
+    updateControls();
+    if (!hadRows) ShowWindow(g_hwnd, SW_SHOWNA);
 }
 
 void progressWindowDestroy() {
@@ -190,6 +163,7 @@ void progressWindowDestroy() {
     g_hwnd = nullptr;
     g_runner = nullptr;
     g_rows.clear();
+    g_shownRows = 0;
 }
 
 } // namespace srt::reaper
