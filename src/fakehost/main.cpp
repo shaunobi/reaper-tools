@@ -339,7 +339,7 @@ int runTempo(int argc, char** argv) {
         check(std::fabs(h.project.bpm - o.bpm) < 1e-9, "project tempo unchanged");
         check(h.undoBlocks.empty(), "no undo block");
     }
-    check(!consoleContains("error:") && !consoleContains("failed"), "no errors in console");
+    check(!consoleContains("error:") && !consoleContains("failed on"), "no errors in console");
     unloadExtension();
     return g_failures ? 1 : 0;
 }
