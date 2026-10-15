@@ -46,19 +46,21 @@ fi
 
 echo "================ what each DLL links against"
 describe() {
-  local f=$1
+  local f=$1 info
+  info=$($OBJDUMP -p "$f")
   echo "--- $f ($(stat -c %s "$f") bytes)"
-  echo "imports:      $($OBJDUMP -p "$f" | grep 'DLL Name' | sed 's/.*DLL Name: //' | tr '\n' ' ')"
-  if $OBJDUMP -p "$f" | grep -E '^Entry +d ' | grep -qE ' 0*[1-9a-f][0-9a-f]* +[0-9a-f]+ Delay'; then
+  echo "imports:      $(echo "$info" | grep 'DLL Name' | sed 's/.*DLL Name: //' | tr '\n' ' ')"
+  if echo "$info" | grep -E '^Entry +d ' | grep -qE ' 0*[1-9a-f][0-9a-f]* +[0-9a-f]+ Delay'; then
     echo "delay-loaded: yes (onnxruntime.dll is bound at first use, see runtime_loader.cpp)"
   else
     echo "delay-loaded: NO - onnxruntime.dll is resolved by Windows at load time"
   fi
-  echo "exports:      $($OBJDUMP -p "$f" | awk '/Export Address Table/{f=1} /PE File Base Relocations|The Import Tables/{f=0} f' | grep -E '^\s+\[\s*[0-9]+\] [A-Za-z_]' | sed -E 's/.*\] //' | tr '\n' ' ')"
-  if $OBJDUMP -p "$f" | grep -q 'VCRUNTIME140'; then echo "C++ runtime:  Microsoft (needs the Visual C++ redistributable installed)"
-  elif $OBJDUMP -p "$f" | grep -qi 'libstdc++'; then echo "C++ runtime:  MinGW, dynamic (needs libstdc++-6.dll next to it)"
+  echo "exports:      $(echo "$info" | awk '/Export Address Table/{f=1} /PE File Base Relocations|The Import Tables/{f=0} f' | grep -E '^\s+\[\s*[0-9]+\] [A-Za-z_]' | sed -E 's/.*\] //' | tr '\n' ' ')"
+  if echo "$info" | grep -q 'VCRUNTIME140'; then echo "C++ runtime:  Microsoft (needs the Visual C++ redistributable installed)"
+  elif echo "$info" | grep -qi 'libstdc++'; then echo "C++ runtime:  MinGW, dynamic (needs libstdc++-6.dll next to it)"
   else echo "C++ runtime:  linked in (no extra files needed)"; fi
 }
+
 describe "$A/reaper_srt.dll"
 describe "$B/reaper_srt.dll"
 
