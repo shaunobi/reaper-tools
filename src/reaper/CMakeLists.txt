@@ -25,10 +25,13 @@ if(NOT WIN32)
 endif()
 
 # Forces the linker to pull ReaperPluginEntry out of reaper_srt_logic. The
-# symbol is extern "C", so it is undecorated on every platform we build for.
+# symbol is extern "C": undecorated on 64-bit Windows and Linux, with a
+# leading underscore on macOS.
 function(srt_keep_plugin_entry target)
   if(MSVC)
     target_link_options(${target} PRIVATE "/INCLUDE:ReaperPluginEntry")
+  elseif(APPLE)
+    target_link_options(${target} PRIVATE "-Wl,-u,_ReaperPluginEntry")
   else()
     target_link_options(${target} PRIVATE "-Wl,-u,ReaperPluginEntry")
   endif()
