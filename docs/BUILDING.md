@@ -50,12 +50,81 @@ runs a small model on the best available execution provider.
 ```
 src/core     srt_core: audio processing, no REAPER dependency
 src/cli      srt_cli: command-line harness over srt_core
-src/reaper   reaper_srt: the REAPER extension
+src/reaper   reaper_srt: the REAPER extension (its logic is a static library
+             the fake host links too)
+src/fakehost srt_fakehost: a stand-in for REAPER that runs the real actions
 tests        Catch2 unit tests
 tools        developer-side scripts (Python) for models
 third_party  git submodules: reaper-sdk, WDL, pocketfft
 cmake        dependency fetching and helpers
 ```
+
+## Running the actions without REAPER (the fake host)
+
+`srt_fakehost` is a small program that stands in for REAPER. It holds a
+project in memory (tracks, items, takes, stretch markers, a constant tempo
+map, the extension-state strings), answers the same API calls the extension
+makes, and loads the extension through the real entry point. It then runs an
+action by its command ID, pumps the main-thread timer until the background
+job finishes, prints the project state, and checks the result. Dialogs are
+answered automatically (the model-download question gets "yes"); the jobs
+window is replaced by progress lines on standard output.
+
+```
+cmake --preset linux-release      # or macos-release / windows-release
+cmake --build --preset linux-release
+ctest --preset linux-release -R fakehost
+```
+
+The five `fakehost.*` tests cover About, Fit drums to grid (with and without
+lead-in bars), Conform drum bars, and Separate stems, each against the real
+model and the same test clips the unit tests use. They are skipped if the
+models have not been downloaded into `build/<preset>/_models` (the configure
+step does that unless `SRT_FETCH_TEST_MODELS` is off).
+
+To run one scenario by hand, from the folder that holds the program
+(`build/linux-release/src/fakehost`):
+
+```
+./srt_fakehost about
+./srt_fakehost fit ../../../../tests/data/beat/clip.wav --bpm 120 --start-bar -2 --expect-bars 4
+./srt_fakehost conform my_drums.wav --bpm 118 --start-bar 1 --position 2.5
+./srt_fakehost separate my_mix.wav
+./srt_fakehost shell my_drums.wav     # type command IDs, "dump", "bpm 121", "startbar -2", "quit"
+```
+
+`--start-bar` is REAPER's "project start measure" setting: `-2` means bars
+-2, -1 and 0 come before bar 1 (so bar 1 is the target), `1` means the
+project starts at bar 1 (so bar 2 is the target). `--position` is where the
+item sits before the action runs. Exit code 0 means every check passed, 1
+means a check failed, 77 means the model was missing.
+
+Work directory: `build/<preset>/fakehost/` holds the fake project's media
+folder (where separated stems land) and a resource folder standing in for
+REAPER's, with the models linked in under `SRT/models/`.
+
+### Debugging with symbols
+
+The `linux-debug` preset builds everything with debug information and no
+optimisation. Run a scenario under gdb (or lldb) and break anywhere in the
+extension:
+
+```
+cmake --preset linux-debug && cmake --build --preset linux-debug
+cd build/linux-debug/src/fakehost
+gdb --args ./srt_fakehost fit ../../../../tests/data/beat/clip.wav --bpm 120 --start-bar -2
+(gdb) break srt::reaper::actionFitDrumsToGrid
+(gdb) run
+```
+
+The same works on macOS with lldb, and on Windows by opening the
+`srt_fakehost` target in Visual Studio (`build/windows-release` is a Visual
+Studio solution; switch the configuration to Debug).
+
+What the fake host does not cover: the real dialogs and the jobs window
+(SWELL/Win32 code in `progress_window.cpp`), REAPER's own stretch-marker
+playback, tempo maps with tempo changes, and anything about how REAPER loads
+the library. A crash on load inside REAPER still needs REAPER.
 
 ## Checking Windows-only code from Linux
 

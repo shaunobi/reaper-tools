@@ -389,6 +389,16 @@ Assertions:
 Bar-fitting maths, STFT round trips, WAV read/write, overlap-add, resampler
 wrapper. Catch2 or doctest, run on every push.
 
+### Fake-host tests (run in CI on every change)
+
+`src/fakehost` is a stand-in for REAPER: an in-memory project behind the
+same API functions the extension calls, loading the extension through its
+real entry point. CTest runs each action through it against the real models
+and checks the outcome (marker positions on bar lines, bar count, extension
+state, one undo block, stem tracks and files). This is the main validation
+loop during development; see docs/BUILDING.md. It does not cover the window
+code or how REAPER loads the library.
+
 ### Manual test in REAPER
 
 Before each release, a checklist in `docs/TESTING.md` run by Shaun or Dean on

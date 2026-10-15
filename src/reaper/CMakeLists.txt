@@ -1,6 +1,8 @@
 # The REAPER extension: reaper_srt.dll / reaper_srt.dylib / reaper_srt.so
 
-set(_sources
+# Everything except the window code goes into a static library so the fake
+# host (src/fakehost) can run the same code outside REAPER.
+add_library(reaper_srt_logic STATIC
   entry.cpp
   reaper_api.cpp
   actions.cpp
@@ -11,9 +13,28 @@ set(_sources
   timeline.cpp
   models.cpp
   host.cpp
-  progress_window.cpp
   runtime_loader.cpp
   crash_guard.cpp)
+target_link_libraries(reaper_srt_logic PUBLIC srt::core)
+target_include_directories(reaper_srt_logic PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(reaper_srt_logic SYSTEM PUBLIC
+  "${SRT_REAPER_SDK_DIR}"
+  "${SRT_WDL_DIR}")
+if(NOT WIN32)
+  target_compile_definitions(reaper_srt_logic PUBLIC SWELL_PROVIDED_BY_APP=1)
+endif()
+
+# Forces the linker to pull ReaperPluginEntry out of reaper_srt_logic. The
+# symbol is extern "C", so it is undecorated on every platform we build for.
+function(srt_keep_plugin_entry target)
+  if(MSVC)
+    target_link_options(${target} PRIVATE "/INCLUDE:ReaperPluginEntry")
+  else()
+    target_link_options(${target} PRIVATE "-Wl,-u,ReaperPluginEntry")
+  endif()
+endfunction()
+
+set(_sources progress_window.cpp)
 
 if(WIN32)
   list(APPEND _sources resource.rc)
@@ -42,11 +63,9 @@ else()
 endif()
 
 add_library(reaper_srt MODULE ${_sources})
-target_link_libraries(reaper_srt PRIVATE srt::core)
-target_include_directories(reaper_srt PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-target_include_directories(reaper_srt SYSTEM PRIVATE
-  "${SRT_REAPER_SDK_DIR}"
-  "${SRT_WDL_DIR}")
+target_link_libraries(reaper_srt PRIVATE reaper_srt_logic)
+# The entry point lives in the static library; make the linker keep it.
+srt_keep_plugin_entry(reaper_srt)
 
 set_target_properties(reaper_srt PROPERTIES PREFIX "" OUTPUT_NAME "reaper_srt")
 if(APPLE)
@@ -57,7 +76,6 @@ elseif(UNIX)
 endif()
 
 if(NOT WIN32)
-  target_compile_definitions(reaper_srt PRIVATE SWELL_PROVIDED_BY_APP=1)
   target_include_directories(reaper_srt PRIVATE "${_rc_dir}")
   set_source_files_properties("${_rc_dir}/resource.rc_mac_dlg" PROPERTIES HEADER_FILE_ONLY TRUE)
 endif()
