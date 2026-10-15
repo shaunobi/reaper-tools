@@ -45,6 +45,28 @@ anywhere on a track, no stretch markers.
    removing them; answer No and nothing changes.
 7. Try a MIDI item: it is skipped with a console message.
 8. Try with a project that starts at bar 1: the first downbeat goes to bar 2.
+9. Tempo guard: set the project tempo well away from the recording (a
+   136 BPM take in a 120 BPM project). The action asks before fitting,
+   naming both tempos and the stretch; No leaves the item untouched, Yes
+   fits with the large stretch as before.
+
+## SRT: Detect tempo
+
+Setup: a project at some tempo (say 120, no tempo map) with a drum recording
+at a clearly different tempo, plus one or two other items on other tracks.
+
+1. Select the recording, run the action. The console reports the detected
+   tempo, counts and confidence, how far the project tempo is from it, and
+   the stretch Fit would need. Nothing has changed yet.
+2. The question that follows names the detected tempo and says how many
+   other items follow the tempo (and will move or stretch) and how many are
+   on the Time base (and will stay put). Check those counts against the
+   items' timebase settings (item properties, or the project default).
+3. Answer No: the console says the tempo was left alone; nothing changed.
+4. Run again, answer Yes: the project tempo changes to the detected value,
+   the other items react as the question said, one undo step restores all.
+5. Add a tempo marker somewhere, run again: it reports but does not offer
+   to change anything, and says the project has a tempo map.
 
 ## SRT: Conform drum bars
 

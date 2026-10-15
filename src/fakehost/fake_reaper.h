@@ -43,6 +43,7 @@ public:
     double position = 0.0;
     double length = 0.0;
     bool selected = false;
+    int timebase = -1; // C_BEATATTACHMODE: -1 track/project default, 0 time, 1 beats, 2 beats (position only)
     std::vector<std::unique_ptr<MediaItem_Take>> takes;
     std::map<std::string, std::string> ext;
     MediaItem_Take* activeTake() const { return takes.empty() ? nullptr : takes.front().get(); }
@@ -52,6 +53,7 @@ class MediaTrack {
 public:
     std::string name;
     int folderDepth = 0;
+    int timebase = -1; // C_BEATATTACHMODE on the track
     std::vector<std::unique_ptr<MediaItem>> items;
 };
 
@@ -63,6 +65,8 @@ public:
     // Displayed bar number of measure index 0. REAPER's "project start measure"
     // setting; 1 means the project starts at bar 1, -2 means bars -2, -1, 0 precede bar 1.
     int startBar = 1;
+    int itemTimebase = 1; // project default timebase ("itemtimelock"): 0 time, 1 beats, 2 beats (position only)
+    int tempoMarkers = 1; // what CountTempoTimeSigMarkers reports
     std::string mediaDir;
     std::string resourcePath;
 };
@@ -73,6 +77,7 @@ struct Host {
     ReaProject project;
     std::vector<std::string> console; // every console line, in order
     int messageBoxAnswer = 6; // IDYES
+    std::vector<std::string> messageBoxes; // every question asked, in order
     std::vector<std::string> undoBlocks;
     std::map<std::string, int> commandIds;
     bool (*hookCommand)(int, int) = nullptr;

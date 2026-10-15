@@ -75,6 +75,7 @@ void f_ShowConsoleMsg(const char* msg) {
 }
 int f_ShowMessageBox(const char* msg, const char* title, int type) {
     std::printf("[messagebox type %d] %s: %s -> answer %d\n", type, title ? title : "", msg ? msg : "", H().messageBoxAnswer);
+    H().messageBoxes.push_back(msg ? msg : "");
     return H().messageBoxAnswer;
 }
 HWND f_GetMainHwnd() { return nullptr; }
@@ -138,6 +139,30 @@ int f_CountSelectedMediaItems(ReaProject* p) {
         for (auto& i : t->items) n += i->selected ? 1 : 0;
     return n;
 }
+int f_CountMediaItems(ReaProject* p) {
+    int n = 0;
+    for (auto& t : proj(p)->tracks) n += static_cast<int>(t->items.size());
+    return n;
+}
+MediaItem* f_GetMediaItem(ReaProject* p, int idx) {
+    int n = 0;
+    for (auto& t : proj(p)->tracks)
+        for (auto& i : t->items)
+            if (n++ == idx) return i.get();
+    return nullptr;
+}
+MediaTrack* f_GetMediaItem_Track(MediaItem* item) { return item->track; }
+int f_CountTempoTimeSigMarkers(ReaProject* p) { return proj(p)->tempoMarkers; }
+void f_SetCurrentBPM(ReaProject* p, double bpm, bool) { proj(p)->bpm = bpm; }
+// Project config variables: only the item timebase is modelled.
+int f_projectconfig_var_getoffs(const char* name, int* szOut) {
+    if (name && std::strcmp(name, "itemtimelock") == 0) {
+        if (szOut) *szOut = static_cast<int>(sizeof(int));
+        return 1;
+    }
+    return -1;
+}
+void* f_projectconfig_var_addr(ReaProject* p, int idx) { return idx == 1 ? &proj(p)->itemTimebase : nullptr; }
 MediaItem* f_GetSelectedMediaItem(ReaProject* p, int sel) {
     int n = 0;
     for (auto& t : proj(p)->tracks)
@@ -163,6 +188,7 @@ double f_GetMediaItemInfo_Value(MediaItem* item, const char* parm) {
     std::string p = parm ? parm : "";
     if (p == "D_POSITION") return item->position;
     if (p == "D_LENGTH") return item->length;
+    if (p == "C_BEATATTACHMODE") return item->timebase;
     std::printf("[fakehost] GetMediaItemInfo_Value(%s) unsupported\n", p.c_str());
     return 0.0;
 }
@@ -316,6 +342,7 @@ MediaTrack* f_GetTrack(ReaProject* p, int idx) {
 }
 double f_GetMediaTrackInfo_Value(MediaTrack* tr, const char* parm) {
     std::string p = parm ? parm : "";
+    if (p == "C_BEATATTACHMODE") return tr->timebase;
     if (p == "IP_TRACKNUMBER") {
         auto& tracks = H().project.tracks;
         for (size_t i = 0; i < tracks.size(); ++i)
@@ -376,6 +403,8 @@ const Entry kTable[] = {
     FAKE(ShowConsoleMsg), FAKE(ShowMessageBox), FAKE(GetMainHwnd), FAKE(GetResourcePath), FAKE(GetAppVersion),
     FAKE(plugin_register), FAKE(Undo_BeginBlock2), FAKE(Undo_EndBlock2), FAKE(UpdateArrange),
     FAKE(CountSelectedMediaItems), FAKE(GetSelectedMediaItem), FAKE(GetActiveTake), FAKE(GetTakeName),
+    FAKE(CountMediaItems), FAKE(GetMediaItem), FAKE(GetMediaItem_Track), FAKE(CountTempoTimeSigMarkers),
+    FAKE(SetCurrentBPM), FAKE(projectconfig_var_getoffs), FAKE(projectconfig_var_addr),
     FAKE(GetMediaItemTake_Source), FAKE(GetMediaItemTake_Item), FAKE(GetMediaItemTrack), FAKE(GetMediaItemInfo_Value),
     FAKE(SetMediaItemInfo_Value), FAKE(GetMediaItemTakeInfo_Value), FAKE(GetSetMediaItemInfo_String),
     FAKE(SetMediaItemPosition), FAKE(SetMediaItemLength), FAKE(UpdateItemInProject), FAKE(GetItemProjectContext),

@@ -13,6 +13,9 @@ Planned actions for the first releases:
   project's bar lines.
 - **SRT: Conform drum bars** — put a stretch marker on every downbeat in
   between and snap each to its bar line.
+- **SRT: Detect tempo** — report the tempo of a selected recording and, in a
+  project without a tempo map, offer to set the project tempo to it after
+  saying what that does to the other items.
 
 The full specification, including every design decision and the open
 questions, is in [docs/SPEC.md](docs/SPEC.md).

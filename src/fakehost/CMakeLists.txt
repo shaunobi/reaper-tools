@@ -20,7 +20,10 @@ if(SRT_BUILD_TESTS)
   add_test(NAME fakehost.fit COMMAND srt_fakehost fit "${_clip}" --bpm 120 --start-bar -2 --expect-bars 4)
   add_test(NAME fakehost.fit_no_leadin COMMAND srt_fakehost fit "${_clip}" --bpm 120 --start-bar 1 --expect-bars 4)
   add_test(NAME fakehost.conform COMMAND srt_fakehost conform "${_clip}" --bpm 120 --start-bar -2 --expect-bars 4)
+  add_test(NAME fakehost.tempo COMMAND srt_fakehost tempo "${_clip}" --bpm 120 --expect-bpm 121.3)
+  add_test(NAME fakehost.tempo_declined COMMAND srt_fakehost tempo "${_clip}" --bpm 120 --answer 7)
   add_test(NAME fakehost.separate COMMAND srt_fakehost separate "${_mix}")
-  set_tests_properties(fakehost.about fakehost.fit fakehost.fit_no_leadin fakehost.conform fakehost.separate
+  set_tests_properties(fakehost.about fakehost.fit fakehost.fit_no_leadin fakehost.conform fakehost.tempo
+    fakehost.tempo_declined fakehost.separate
     PROPERTIES SKIP_RETURN_CODE 77 WORKING_DIRECTORY "$<TARGET_FILE_DIR:srt_fakehost>")
 endif()

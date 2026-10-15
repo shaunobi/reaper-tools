@@ -212,6 +212,12 @@ Applies to each selected item independently.
    of downbeat times (in source seconds), tempo estimate, confidence.
    Skipped if first and last were supplied by the user, in which case the
    bar count comes from step 3 alone.
+   **Tempo guard:** if the detected tempo is more than 5% from the project
+   tempo at the item, stop and ask before continuing, stating both tempos
+   and the stretch that would result. "No" leaves the item untouched. (Added
+   after the first real test: a 136 BPM recording was silently stretched by
+   13% onto a 120 BPM project. Fit and Conform never change the tempo; see
+   5.3 for the action that can.)
 3. **Choose first and last.**
    - First = the first detected downbeat, unless supplied by the user.
    - Last = the last detected downbeat, unless supplied by the user.
@@ -263,6 +269,31 @@ Applies to each selected item independently.
    in source order so REAPER's uniform stretch between neighbours works out.
 6. **Report.** Console line: `SRT: "Drums" — conformed 63 bars, largest
    correction 38 ms at bar 41`.
+
+---
+
+### 5.3 SRT: Detect tempo
+
+**Command ID:** `_SRT_DETECT_TEMPO`
+
+For the case where the recording should set the tempo rather than follow
+it: a live take at an unknown tempo at the start of a project.
+
+1. Run the detection pipeline on each selected item with a wide tempo
+   search (no project-tempo prior). Report tempo, beat and downbeat counts,
+   confidence, and how far the project tempo at the item is from it, with
+   the stretch Fit would need. Nothing is changed by this step.
+2. If the project has a tempo map (more than one tempo/time signature
+   marker), stop there: changing a map is the user's job.
+3. Otherwise count what a tempo change would do to every other item, by its
+   effective timebase (item setting, else track, else project default):
+   items on "Beats" move or stretch with the tempo; items on "Time" stay put
+   in seconds and come off the grid. Ask "Set the project tempo to X?" with
+   those counts in the question. Yes sets the project tempo in one undo
+   block; No leaves everything alone.
+
+Not done (possible follow-up): "set the tempo and keep every other item
+where it is", which would switch the other items to the Time base first.
 
 ---
 

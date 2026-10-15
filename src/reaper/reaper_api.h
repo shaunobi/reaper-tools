@@ -54,6 +54,13 @@
 #define REAPERAPI_WANT_GetSetMediaItemTakeInfo_String
 #define REAPERAPI_WANT_GetProjectPathEx
 #define REAPERAPI_WANT_TrackList_AdjustWindows
+#define REAPERAPI_WANT_SetCurrentBPM
+#define REAPERAPI_WANT_CountTempoTimeSigMarkers
+#define REAPERAPI_WANT_CountMediaItems
+#define REAPERAPI_WANT_GetMediaItem
+#define REAPERAPI_WANT_GetMediaItem_Track
+#define REAPERAPI_WANT_projectconfig_var_getoffs
+#define REAPERAPI_WANT_projectconfig_var_addr
 
 #include "reaper_plugin.h"
 #include "reaper_plugin_functions.h"

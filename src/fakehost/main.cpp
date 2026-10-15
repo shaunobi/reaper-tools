@@ -6,6 +6,7 @@
 //   srt_fakehost about
 //   srt_fakehost fit <drums.wav> [--bpm 120] [--start-bar -2] [--expect-bars N] [--position SEC]
 //   srt_fakehost conform <drums.wav> [same options]
+//   srt_fakehost tempo <drums.wav> [--bpm 120] [--expect-bpm 121.3] [--answer 6|7]
 //   srt_fakehost separate <mix.wav>
 //   srt_fakehost shell <wav>          (set up a project, run commands typed on stdin)
 //
@@ -96,6 +97,12 @@ void check(bool ok, const std::string& what) {
     if (!ok) ++g_failures;
 }
 
+bool askedContains(const std::string& needle) {
+    for (const auto& q : fake::host().messageBoxes)
+        if (q.find(needle) != std::string::npos) return true;
+    return false;
+}
+
 bool consoleContains(const std::string& needle) {
     for (const auto& line : fake::host().console)
         if (line.find(needle) != std::string::npos) return true;
@@ -158,7 +165,9 @@ void runAndWait(const std::string& idString, double timeoutSeconds = 1800.0) {
         // about
         "background check OK", "background check cancelled", "background check FAILED", "about: FAILED",
         // fit / conform
-        "fitted ", "conformed ", "could not find two downbeats", "nothing applied", "is gone;",
+        "fitted ", "conformed ", "could not find two downbeats", "nothing applied", "is gone;", "not applied:",
+        // detect tempo
+        "project tempo set to", "project tempo left at", "no tempo found", "tempo map (",
         // separate
         "separated \"", "failed on \"", "cancelled \"",
         // shared
@@ -213,6 +222,8 @@ struct DrumOptions {
     int startBar = -2;
     int expectBars = -1;
     double position = 3.0;
+    double expectBpm = 0.0;
+    int answer = 6; // message box answer: 6 = yes, 7 = no
 };
 
 bool parseDrumOptions(int argc, char** argv, DrumOptions& o) {
@@ -225,6 +236,8 @@ bool parseDrumOptions(int argc, char** argv, DrumOptions& o) {
         else if (k == "--start-bar") o.startBar = std::atoi(v);
         else if (k == "--expect-bars") o.expectBars = std::atoi(v);
         else if (k == "--position") o.position = std::atof(v);
+        else if (k == "--expect-bpm") o.expectBpm = std::atof(v);
+        else if (k == "--answer") o.answer = std::atoi(v);
         else return false;
     }
     return true;
@@ -292,6 +305,45 @@ int runDrums(int argc, char** argv, bool conform) {
     return g_failures ? 1 : 0;
 }
 
+// "Detect tempo": report, then (with answer 6) set the project tempo.
+int runTempo(int argc, char** argv) {
+    DrumOptions o;
+    if (!parseDrumOptions(argc, argv, o)) return 2;
+    fs::path media, resource;
+    prepareWorkDir(media, resource);
+    if (!installModel(srt::reaper::kBeatThisModel, resource)) return 77;
+    if (!loadExtension()) return 1;
+    auto& h = fake::host();
+    MediaItem* item = buildDrumProject(o);
+    // Two bystander items: one follows the tempo (project default), one is on the Time base.
+    MediaTrack* other = h.addTrack("Other");
+    h.addItem(other, "follows", o.wav, 30.0);
+    h.addItem(other, "fixed", o.wav, 50.0)->timebase = 0;
+    h.messageBoxAnswer = o.answer;
+
+    runAndWait("SRT_DETECT_TEMPO");
+    dumpProject();
+
+    check(consoleContains("BPM detected"), "tempo reported");
+    check(askedContains("1 other item(s) follow the tempo and will move or stretch; 1 are on the Time base"),
+          "consequences for the other items spelled out in the question");
+    check(item->activeTake()->markers.empty() && std::fabs(item->position - o.position) < 1e-9, "the item itself untouched");
+    if (o.answer == 6) {
+        check(consoleContains("project tempo set to"), "project tempo set");
+        if (o.expectBpm > 0.0)
+            check(std::fabs(h.project.bpm - o.expectBpm) < 1.5,
+                  "project tempo " + std::to_string(h.project.bpm) + " near " + std::to_string(o.expectBpm));
+        check(h.undoBlocks.size() == 1, "one undo block");
+    } else {
+        check(consoleContains("project tempo left at"), "declined: tempo left alone");
+        check(std::fabs(h.project.bpm - o.bpm) < 1e-9, "project tempo unchanged");
+        check(h.undoBlocks.empty(), "no undo block");
+    }
+    check(!consoleContains("error:") && !consoleContains("failed"), "no errors in console");
+    unloadExtension();
+    return g_failures ? 1 : 0;
+}
+
 int runSeparate(int argc, char** argv) {
     if (argc < 3) return 2;
     fs::path media, resource;
@@ -353,13 +405,14 @@ int runShell(int argc, char** argv) {
     MediaTrack* tr = h.addTrack("Track 1");
     MediaItem* item = h.addItem(tr, fs::path(argv[2]).stem().string(), argv[2], 3.0);
     item->selected = true;
-    std::printf("commands: SRT_ABOUT SRT_FIT_DRUMS_TO_GRID SRT_CONFORM_DRUM_BARS SRT_SEPARATE_STEMS dump bpm <x> startbar <n> quit\n");
+    std::printf("commands: SRT_ABOUT SRT_DETECT_TEMPO SRT_FIT_DRUMS_TO_GRID SRT_CONFORM_DRUM_BARS SRT_SEPARATE_STEMS dump bpm <x> startbar <n> answer <6|7> quit\n");
     std::string line;
     while (std::printf("> "), std::fflush(stdout), std::getline(std::cin, line)) {
         if (line == "quit" || line == "q") break;
         if (line == "dump") { dumpProject(); continue; }
         if (line.rfind("bpm ", 0) == 0) { h.project.bpm = std::atof(line.c_str() + 4); continue; }
         if (line.rfind("startbar ", 0) == 0) { h.project.startBar = std::atoi(line.c_str() + 9); continue; }
+        if (line.rfind("answer ", 0) == 0) { h.messageBoxAnswer = std::atoi(line.c_str() + 7); continue; }
         if (line.empty()) continue;
         if (!h.commandId(line)) { std::printf("unknown command %s\n", line.c_str()); continue; }
         runAndWait(line);
@@ -381,7 +434,7 @@ int main(int argc, char** argv) {
         argc -= 2;
     }
     if (argc < 2) {
-        std::fprintf(stderr, "usage: srt_fakehost [--plugin <reaper_srt library>] about | fit <wav> [opts] | conform <wav> [opts] | separate <wav> | shell <wav>\n");
+        std::fprintf(stderr, "usage: srt_fakehost [--plugin <reaper_srt library>] about | fit <wav> [opts] | conform <wav> [opts] | tempo <wav> [opts] | separate <wav> | shell <wav>\n");
         return 2;
     }
     const std::string mode = argv[1];
@@ -389,6 +442,7 @@ int main(int argc, char** argv) {
     if (mode == "about") rc = runAbout();
     else if (mode == "fit") rc = runDrums(argc, argv, false);
     else if (mode == "conform") rc = runDrums(argc, argv, true);
+    else if (mode == "tempo") rc = runTempo(argc, argv);
     else if (mode == "separate") rc = runSeparate(argc, argv);
     else if (mode == "shell") rc = runShell(argc, argv);
     else rc = 2;
