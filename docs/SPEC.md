@@ -459,7 +459,7 @@ additional files of the same package so they land next to the extension.
 
 | # | Milestone | Deliverable |
 |---|---|---|
-| 0 | Foundation | Repo layout, CMake, CI building an empty extension on both platforms that registers one "SRT: About" action. Background job runner and progress window. ONNX Runtime linked and a "hello" model running on DirectML. |
+| 0 | Foundation | Repo layout, CMake, CI building an empty extension on both platforms that registers one "SRT: About" action. Background job runner and progress window. ONNX Runtime linked and a "hello" model running on DirectML. Status: done and confirmed inside REAPER on Shaun's Windows machine (About action: smoke model OK on CPU and on DirectML, background job and jobs window OK). An earlier crash on this action no longer reproduces with the delay-loaded runtime. |
 | 1 | Detection in srt_cli | Beat This! running in C++, front end verified against Python, onset refinement, DBN decoding with tempo prior. `srt_cli beats file.wav` prints downbeats and tempo. Accuracy tests pass on Shaun's stems. Status: model, front end, chunking, minimal peak picking, DBN decoding with tempo prior, onset refinement, tempo fit and confidence scoring are done and verified on a synthetic clip. Only the real-stem accuracy tests remain (waiting on test material). |
 | 2 | Fit drums to grid | Action wired to REAPER. Manual test on a real project. Status: written and compiling on all platforms; not yet run inside REAPER. See docs/TESTING.md. |
 | 3 | Conform drum bars | Action wired. Manual test. First tagged release `v0.1.0` for internal use. Status: written alongside milestone 2 (shares the detection job); not yet run inside REAPER. |
