@@ -8,6 +8,12 @@
 //   srt_fakehost conform <drums.wav> [same options]
 //   srt_fakehost separate <mix.wav>
 //   srt_fakehost shell <wav>          (set up a project, run commands typed on stdin)
+//
+// Add --plugin <path to reaper_srt.dll> before the mode to load a separately
+// built extension from disk the way REAPER does (LoadLibrary + the exported
+// entry point) instead of the copy linked into this program. On Windows (or
+// under Wine) that exercises a CI-built or locally cross-built DLL as-is,
+// including its own runtime loading, dialogs and jobs window.
 
 #include "fake_reaper.h"
 #include "host.h"
@@ -25,6 +31,12 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
 extern "C" int REAPER_PLUGIN_ENTRYPOINT(REAPER_PLUGIN_HINSTANCE hInstance, reaper_plugin_info_t* rec);
 
 namespace fs = std::filesystem;
@@ -32,6 +44,52 @@ namespace fs = std::filesystem;
 namespace {
 
 int g_failures = 0;
+
+// Folders are found relative to this program, which sits at
+// <build>/src/fakehost: the models the unit tests download live in
+// <build>/_models and the fake project's files go under <build>/fakehost.
+// (Relative to the program rather than baked in at build time so the same
+// binary works under Wine, where the build folder has a Windows path.)
+fs::path g_exeDir;
+fs::path modelsCacheDir() { return g_exeDir / ".." / ".." / "_models"; }
+fs::path workRootDir() { return g_exeDir / ".." / ".." / "fakehost"; }
+
+// The entry point to drive: ours (linked in) unless --plugin names a library.
+using EntryFn = int (*)(REAPER_PLUGIN_HINSTANCE, reaper_plugin_info_t*);
+EntryFn g_entry = &REAPER_PLUGIN_ENTRYPOINT;
+REAPER_PLUGIN_HINSTANCE g_instance = nullptr;
+bool g_external = false;
+
+bool loadPluginLibrary(const std::string& path) {
+#ifdef _WIN32
+    const std::wstring wpath = fs::absolute(path).wstring();
+    HMODULE m = LoadLibraryExW(wpath.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (!m) {
+        std::printf("could not load %s (Windows error %lu)\n", path.c_str(), GetLastError());
+        return false;
+    }
+    auto fn = reinterpret_cast<EntryFn>(reinterpret_cast<void*>(GetProcAddress(m, "ReaperPluginEntry")));
+    g_instance = m;
+#else
+    void* m = dlopen(fs::absolute(path).c_str(), RTLD_NOW | RTLD_LOCAL);
+    if (!m) {
+        std::printf("could not load %s: %s\n", path.c_str(), dlerror());
+        return false;
+    }
+    auto fn = reinterpret_cast<EntryFn>(dlsym(m, "ReaperPluginEntry"));
+    g_instance = m;
+    std::printf("note: on this platform the extension's window code expects REAPER's SWELL; "
+                "scenarios that open the jobs window will not work with --plugin\n");
+#endif
+    if (!fn) {
+        std::printf("%s does not export ReaperPluginEntry\n", path.c_str());
+        return false;
+    }
+    g_entry = fn;
+    g_external = true;
+    std::printf("loaded extension from %s\n", path.c_str());
+    return true;
+}
 
 void check(bool ok, const std::string& what) {
     std::printf("%s %s\n", ok ? "  ok  " : "  FAIL", what.c_str());
@@ -47,7 +105,7 @@ bool consoleContains(const std::string& needle) {
 // Mirrors <resource>/SRT/models/<id>/<file> onto the test model cache that the
 // unit tests download. Returns false if the cached model is not there.
 bool installModel(const srt::reaper::ModelSpec& spec, const fs::path& resource) {
-    const fs::path cached = fs::path(SRT_FAKEHOST_MODELS_DIR) / spec.fileName;
+    const fs::path cached = modelsCacheDir() / spec.fileName;
     if (!fs::exists(cached)) {
         std::printf("model %s not found at %s\n", spec.fileName, cached.string().c_str());
         return false;
@@ -64,7 +122,7 @@ bool installModel(const srt::reaper::ModelSpec& spec, const fs::path& resource) 
 
 // Fresh work directory with a media folder and a resource folder.
 void prepareWorkDir(fs::path& media, fs::path& resource) {
-    const fs::path work = SRT_FAKEHOST_WORK_DIR;
+    const fs::path work = workRootDir();
     media = work / "media";
     resource = work / "resource";
     std::error_code ec;
@@ -78,7 +136,7 @@ void prepareWorkDir(fs::path& media, fs::path& resource) {
 
 bool loadExtension() {
     reaper_plugin_info_t rec = fake::host().pluginInfo();
-    const int rc = REAPER_PLUGIN_ENTRYPOINT(nullptr, &rec);
+    const int rc = g_entry(g_instance, &rec);
     check(rc == 1, "ReaperPluginEntry returned 1");
     check(fake::host().commandId("SRT_ABOUT") != 0, "SRT_ABOUT registered");
     check(fake::host().commandId("SRT_FIT_DRUMS_TO_GRID") != 0, "SRT_FIT_DRUMS_TO_GRID registered");
@@ -88,10 +146,40 @@ bool loadExtension() {
     return rc == 1;
 }
 
-void unloadExtension() { REAPER_PLUGIN_ENTRYPOINT(nullptr, nullptr); }
+void unloadExtension() { g_entry(g_instance, nullptr); }
 
-// Runs the command and pumps the main-thread timer until no job is active.
+// Runs the command and pumps the main-thread timer until the action is
+// finished. "Finished" is read from the console: every action ends with a
+// known line (success, nothing to do, or an error). With the extension linked
+// in we also wait for its job runner to go idle; a separately loaded library
+// has its own runner we cannot see, so the console is all we have there.
 void runAndWait(const std::string& idString, double timeoutSeconds = 1800.0) {
+    static const char* const kDoneMarkers[] = {
+        // about
+        "background check OK", "background check cancelled", "background check FAILED", "about: FAILED",
+        // fit / conform
+        "fitted ", "conformed ", "could not find two downbeats", "nothing applied", "is gone;",
+        // separate
+        "separated \"", "failed on \"", "cancelled \"",
+        // shared
+        "model download declined", "model download failed", "model download cancelled", "cannot download",
+        "select at least one", "  error: ",
+    };
+    const size_t consoleBefore = fake::host().console.size();
+    auto finished = [&] {
+        for (size_t i = consoleBefore; i < fake::host().console.size(); ++i)
+            for (const char* m : kDoneMarkers)
+                if (fake::host().console[i].find(m) != std::string::npos) return true;
+        return false;
+    };
+    // Items the action skipped before starting any job also count as finished.
+    auto skippedEverything = [&] {
+        bool sawSkip = false;
+        for (size_t i = consoleBefore; i < fake::host().console.size(); ++i)
+            if (fake::host().console[i].find("skipped ") != std::string::npos) sawSkip = true;
+        return sawSkip && !g_external && !srt::reaper::jobs().hasActive();
+    };
+
     std::printf("-- running %s\n", idString.c_str());
     const bool handled = fake::host().runCommand(idString);
     check(handled, "command handled by hookcommand");
@@ -99,15 +187,16 @@ void runAndWait(const std::string& idString, double timeoutSeconds = 1800.0) {
     int idleTicks = 0;
     for (;;) {
         fake::host().tick();
-        if (srt::reaper::jobs().hasActive()) {
+        const bool busy = !g_external && srt::reaper::jobs().hasActive();
+        if (busy) {
             idleTicks = 0;
-        } else if (++idleTicks >= 5) {
-            break; // a few quiet ticks so continuations (model prompt -> action) get to run
+        } else if ((finished() || skippedEverything()) && ++idleTicks >= 5) {
+            break; // a few quiet ticks so continuations get to run
         }
         const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         if (elapsed > timeoutSeconds) {
-            check(false, "timed out waiting for jobs");
-            srt::reaper::jobs().cancelAll();
+            check(false, "timed out waiting for the action to finish");
+            if (!g_external) srt::reaper::jobs().cancelAll();
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -282,8 +371,17 @@ int runShell(int argc, char** argv) {
 } // namespace
 
 int main(int argc, char** argv) {
+    std::error_code ec;
+    g_exeDir = fs::canonical(fs::absolute(argv[0]), ec).parent_path();
+    if (ec) g_exeDir = fs::absolute(argv[0]).parent_path();
+    if (argc >= 3 && std::strcmp(argv[1], "--plugin") == 0) {
+        if (!loadPluginLibrary(argv[2])) return 1;
+        argv[2] = argv[0];
+        argv += 2;
+        argc -= 2;
+    }
     if (argc < 2) {
-        std::fprintf(stderr, "usage: srt_fakehost about | fit <wav> [opts] | conform <wav> [opts] | separate <wav> | shell <wav>\n");
+        std::fprintf(stderr, "usage: srt_fakehost [--plugin <reaper_srt library>] about | fit <wav> [opts] | conform <wav> [opts] | separate <wav> | shell <wav>\n");
         return 2;
     }
     const std::string mode = argv[1];

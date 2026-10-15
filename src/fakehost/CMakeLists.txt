@@ -5,9 +5,6 @@ add_executable(srt_fakehost
   fake_reaper.cpp
   progress_window_headless.cpp)
 target_link_libraries(srt_fakehost PRIVATE reaper_srt_logic)
-target_compile_definitions(srt_fakehost PRIVATE
-  SRT_FAKEHOST_MODELS_DIR="${CMAKE_BINARY_DIR}/_models"
-  SRT_FAKEHOST_WORK_DIR="${CMAKE_BINARY_DIR}/fakehost")
 srt_keep_plugin_entry(srt_fakehost)
 srt_copy_onnxruntime_next_to(srt_fakehost)
 if(APPLE)

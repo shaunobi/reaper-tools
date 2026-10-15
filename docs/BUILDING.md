@@ -121,10 +121,101 @@ The same works on macOS with lldb, and on Windows by opening the
 `srt_fakehost` target in Visual Studio (`build/windows-release` is a Visual
 Studio solution; switch the configuration to Debug).
 
-What the fake host does not cover: the real dialogs and the jobs window
-(SWELL/Win32 code in `progress_window.cpp`), REAPER's own stretch-marker
-playback, tempo maps with tempo changes, and anything about how REAPER loads
-the library. A crash on load inside REAPER still needs REAPER.
+What the fake host does not cover: REAPER's own stretch-marker playback,
+tempo maps with tempo changes, and anything about how REAPER loads the
+library. With the extension linked in, the dialogs and the jobs window are
+replaced by console output; with `--plugin` (below) the real ones run.
+
+### Loading a built DLL instead of the linked-in copy
+
+`--plugin <path>` makes the fake host load a separately built extension
+from disk the way REAPER does (LoadLibrary, then the exported entry point)
+and drive that instead:
+
+```
+srt_fakehost --plugin C:\path\to\reaper_srt.dll about
+```
+
+This runs the DLL as-is: its own runtime loading, its real dialogs and jobs
+window. It is how the Windows builds are compared (next section). On macOS
+and Linux the window code expects REAPER's SWELL, so `--plugin` there only
+works for scenarios that never open the jobs window.
+
+## Building the Windows extension from Linux
+
+Two cross-compile presets build Windows x64 binaries on a Linux machine (or
+in a Claude cloud session) and run them under Wine, so a change can be
+built, run through the fake host and debugged without a round trip to
+GitHub Actions.
+
+| Preset | Toolchain | Use it for |
+|---|---|---|
+| `windows-clang` | clang-cl + lld-link against the Windows SDK and Visual C++ runtime fetched by `xwin` | A DLL REAPER can load. Same C++ object layout, exception handling and C runtime as the Visual Studio build CI ships. Debug symbols as a PDB file. |
+| `windows-mingw` | clang targeting MinGW-w64 + lld | Quick builds and tests when the Windows SDK is not available. The DLL runs under the fake host but must not be loaded into REAPER (see below). |
+
+Both have a `-debug` variant. Both delay-load `onnxruntime.dll` like the
+CI build and copy the runtime DLLs next to the results.
+
+Setup, once:
+
+```
+sudo apt install clang lld llvm g++-mingw-w64-x86-64 wine64 xvfb
+# Windows SDK + C runtime (about 250 MB, from Microsoft's servers, licence accepted on the command line):
+curl -sSL https://github.com/Jake-Shadle/xwin/releases/download/0.6.6/xwin-0.6.6-x86_64-unknown-linux-musl.tar.gz | tar xz
+./xwin-0.6.6-x86_64-unknown-linux-musl/xwin --accept-license --arch x86_64 splat --output ~/.cache/xwin --preserve-ms-arch-notation
+```
+
+Build and test (the tests run through Wine; `xvfb-run` gives the dialogs a
+display):
+
+```
+cmake --preset windows-clang
+cmake --build --preset windows-clang
+xvfb-run -a ctest --preset windows-clang
+```
+
+The extension is `build/windows-clang/src/reaper/reaper_srt.dll` with its
+runtime DLLs next to it; copy that folder's contents into REAPER's
+`UserPlugins` to try a local build in REAPER. The fake host for that build is
+`build/windows-clang/src/fakehost/srt_fakehost.exe`.
+
+Why the MinGW DLL must stay out of REAPER: GNU-style C++ (MinGW, and clang
+in MinGW mode) and Microsoft C++ lay out virtual function tables
+differently (a virtual destructor takes two slots in one and one in the
+other, among other things). REAPER hands the extension C++ objects such as
+`PCM_source` and the extension calls their virtual functions, so a MinGW
+build would call the wrong functions. The same clash shows up in the fake
+host when a Microsoft-built DLL is loaded by a MinGW-built fake host: the
+"Fit drums to grid" scenario stops with "source returned no samples". Use
+matching builds, or the `windows-clang` preset throughout.
+
+### Comparing two Windows builds
+
+`tools/compare_windows_builds.sh` takes two folders each holding
+`reaper_srt.dll` (with `onnxruntime.dll` and `DirectML.dll` next to it) and
+reports, for each DLL, what it links against (imports, whether
+`onnxruntime.dll` is delay-loaded, which C++ runtime it needs) and then runs
+the fake-host scenarios through each DLL under Wine and diffs the console
+output. `tools/fetch_ci_windows_build.sh` downloads the DLL GitHub Actions
+built (the newest artifact, or one by commit) into `build/ci-windows/<sha>`.
+
+```
+tools/fetch_ci_windows_build.sh latest
+tools/compare_windows_builds.sh build/ci-windows/<sha> build/windows-clang/src/reaper
+tools/compare_windows_builds.sh --old-runtime path/to/old/onnxruntime.dll build/ci-windows/<sha> build/windows-clang/src/reaper about
+```
+
+`--old-runtime` copies an older `onnxruntime.dll` into the Wine prefix's
+System32 folder first, which mimics a Windows machine that ships one (many
+do) and is exactly the situation the delay-load code in
+`runtime_loader.cpp` exists for. An old runtime can be taken from any
+earlier `Microsoft.ML.OnnxRuntime` NuGet package.
+
+Wine is not Windows: DirectML has no working graphics device here (the
+extension reports it unavailable and falls back to the CPU provider), and
+Wine's copies of the Visual C++ runtime DLLs stand in for Microsoft's. A
+crash that only happens with a real GPU, or only in REAPER's process, still
+needs REAPER on Windows.
 
 ## Checking Windows-only code from Linux
 

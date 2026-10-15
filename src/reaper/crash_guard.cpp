@@ -1,8 +1,9 @@
 #include "crash_guard.h"
 
-// Structured exception handling (__try/__except) is Microsoft-only; other
-// Windows compilers (MinGW, used for syntax checks) get the plain version.
-#if defined(_WIN32) && defined(_MSC_VER)
+// Structured exception handling (__try/__except) needs the Microsoft
+// compiler or clang (with -fms-extensions, see CMakeLists.txt); GCC gets the
+// plain version.
+#if defined(_WIN32) && (defined(_MSC_VER) || defined(__clang__))
 #include <windows.h>
 #include <cstdio>
 

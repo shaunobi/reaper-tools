@@ -396,8 +396,12 @@ same API functions the extension calls, loading the extension through its
 real entry point. CTest runs each action through it against the real models
 and checks the outcome (marker positions on bar lines, bar count, extension
 state, one undo block, stem tracks and files). This is the main validation
-loop during development; see docs/BUILDING.md. It does not cover the window
-code or how REAPER loads the library.
+loop during development; see docs/BUILDING.md. The fake host can also load a
+built `reaper_srt.dll` from disk (`--plugin`), and Windows builds can be
+cross-compiled from Linux and run under Wine, so a CI-built DLL and a local
+one can be compared without a Windows machine. What remains for REAPER
+itself: how it loads the library, real GPU behaviour, and the window code's
+look and feel.
 
 ### Manual test in REAPER
 

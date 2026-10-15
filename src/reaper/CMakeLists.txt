@@ -83,12 +83,19 @@ if(NOT WIN32)
   set_source_files_properties("${_rc_dir}/resource.rc_mac_dlg" PROPERTIES HEADER_FILE_ONLY TRUE)
 endif()
 
-if(WIN32)
+if(MSVC)
   # Delay-load the runtime so the extension can bind it to the copy next to
   # itself at load time instead of whatever Windows finds first (see
   # runtime_loader.h).
   target_link_options(reaper_srt PRIVATE "/DELAYLOAD:onnxruntime.dll")
   target_link_libraries(reaper_srt PRIVATE delayimp)
+elseif(WIN32)
+  # Same thing with lld (the MinGW cross-build); the helper lives in libmingwex.
+  target_link_options(reaper_srt PRIVATE "-Wl,--delayload=onnxruntime.dll")
+endif()
+if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT MSVC)
+  # __try/__except needs the Microsoft extensions switched on under clang+MinGW.
+  set_source_files_properties(crash_guard.cpp PROPERTIES COMPILE_OPTIONS "-fms-extensions")
 endif()
 
 srt_copy_onnxruntime_next_to(reaper_srt)

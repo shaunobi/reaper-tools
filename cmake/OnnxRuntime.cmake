@@ -60,6 +60,13 @@ if(WIN32)
     "${_dir}/runtimes/win-x64/native/onnxruntime_providers_shared.dll"
     "${_dml}/bin/x64-win/DirectML.dll")
   list(APPEND SRT_ONNXRUNTIME_DEFINES SRT_HAVE_DML=1)
+  if(NOT MSVC)
+    # The MinGW cross-build has no Windows SDK: take DirectML.h from the
+    # DirectML package, and stub the one source annotation MinGW's sal.h lacks.
+    set_property(TARGET onnxruntime::onnxruntime APPEND PROPERTY
+      INTERFACE_INCLUDE_DIRECTORIES "${_dml}/include")
+    list(APPEND SRT_ONNXRUNTIME_DEFINES "_Maybenull_=")
+  endif()
 elseif(APPLE)
   set(_dir "${SRT_ORT_ROOT}/osx-arm64")
   _srt_fetch_archive(

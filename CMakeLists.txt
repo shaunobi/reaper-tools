@@ -26,9 +26,14 @@ option(SRT_BUILD_REAPER "Build the REAPER extension" ON)
 # Where the finished extension and its runtime libraries are collected.
 set(SRT_DIST_DIR "${CMAKE_BINARY_DIR}/dist" CACHE PATH "Output folder for the packaged extension")
 
-if(MSVC)
-  add_compile_options(/W4 /permissive- /utf-8 /MP)
+if(WIN32)
   add_compile_definitions(_CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
+if(MSVC)
+  add_compile_options(/W4 /permissive- /utf-8)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    add_compile_options(/MP) # parallel compilation; clang-cl does not take it
+  endif()
 else()
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
