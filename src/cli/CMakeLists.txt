@@ -1,0 +1,8 @@
+add_executable(srt_cli main.cpp)
+target_link_libraries(srt_cli PRIVATE srt::core)
+srt_copy_onnxruntime_next_to(srt_cli)
+if(APPLE)
+  set_target_properties(srt_cli PROPERTIES BUILD_RPATH "@loader_path")
+elseif(UNIX)
+  set_target_properties(srt_cli PROPERTIES BUILD_RPATH "$ORIGIN")
+endif()

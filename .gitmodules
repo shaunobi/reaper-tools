@@ -1,0 +1,14 @@
+[submodule "third_party/reaper-sdk"]
+	path = third_party/reaper-sdk
+	url = https://github.com/justinfrankel/reaper-sdk.git
+[submodule "third_party/WDL"]
+	path = third_party/WDL
+	url = https://github.com/justinfrankel/WDL.git
+[submodule "third_party/pocketfft"]
+	path = third_party/pocketfft
+	url = https://github.com/mreineck/pocketfft.git
+	branch = cpp
+[submodule "third_party/r8brain"]
+	path = third_party/r8brain
+	url = https://github.com/avaneev/r8brain-free-src.git
+	branch = master
