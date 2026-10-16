@@ -15,6 +15,11 @@ jobs:
         with: { submodules: recursive }
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y ninja-build perl libcurl4-openssl-dev
+      - name: Cache test models
+        uses: actions/cache@v4
+        with:
+          path: build/linux-release/_models
+          key: models-${{ hashFiles('tests/CMakeLists.txt') }}
       - name: Configure
         run: cmake --preset linux-release
       - name: Build
@@ -28,6 +33,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
+      - name: Cache test models
+        uses: actions/cache@v4
+        with:
+          path: build/windows-release/_models
+          key: models-${{ hashFiles('tests/CMakeLists.txt') }}
       - name: Configure
         run: cmake --preset windows-release
       - name: Build
@@ -49,6 +59,11 @@ jobs:
         with: { submodules: recursive }
       - name: Install tools
         run: brew install ninja
+      - name: Cache test models
+        uses: actions/cache@v4
+        with:
+          path: build/macos-release/_models
+          key: models-${{ hashFiles('tests/CMakeLists.txt') }}
       - name: Configure
         run: cmake --preset macos-release
       - name: Build
