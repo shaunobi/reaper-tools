@@ -111,7 +111,8 @@ struct DemucsSeparator::Impl {
         if (frames != specFrames(segment, config.hop)) throw std::runtime_error("Demucs model: hop does not match");
     }
 
-    void run(const DemucsSegmentIn& in, DemucsSegmentOut& out, Progress* progress, double p0, double p1) {
+    void run(const DemucsSegmentIn& in, DemucsSegmentOut& out, Progress* progress) {
+        const double p0 = in.progressFrom, p1 = in.progressTo;
         const int64_t mixShape[] = {1, 2, static_cast<int64_t>(segment)};
         const int64_t specShape[] = {1, 2, static_cast<int64_t>(bins), static_cast<int64_t>(frames)};
         Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -203,10 +204,8 @@ std::vector<AudioBuffer> DemucsSeparator::separateWith(const AudioBuffer& stereo
             std::copy(real.begin(), real.end(), in.specReal.begin() + static_cast<long>(ch * bins * frames));
             std::copy(imag.begin(), imag.end(), in.specImag.begin() + static_cast<long>(ch * bins * frames));
         }
-        const double p0 = 0.05 + 0.85 * static_cast<double>(done) / static_cast<double>(numChunks);
-        const double p1 = 0.05 + 0.85 * static_cast<double>(done + 1) / static_cast<double>(numChunks);
-        (void)p0;
-        (void)p1;
+        in.progressFrom = 0.05 + 0.85 * static_cast<double>(done) / static_cast<double>(numChunks);
+        in.progressTo = 0.05 + 0.85 * static_cast<double>(done + 1) / static_cast<double>(numChunks);
         model(in, out);
         if (out.specReal.size() != numStems * 2 * bins * frames || out.time.size() != numStems * 2 * segment)
             throw std::runtime_error("DemucsSeparator::separateWith: bad model output");
@@ -223,7 +222,7 @@ std::vector<AudioBuffer> DemucsSeparator::separateWith(const AudioBuffer& stereo
                 }
             }
         for (size_t i = 0; i < chunkLen; ++i) sumWeight[off + i] += weight[i];
-        if (progress) progress->set(0.05 + 0.85 * static_cast<double>(done + 1) / static_cast<double>(numChunks), "separating");
+        if (progress) progress->set(in.progressTo, "separating");
     }
 
     std::vector<AudioBuffer> stems;
@@ -250,15 +249,16 @@ std::vector<AudioBuffer> DemucsSeparator::separate(const AudioBuffer& audio, Pro
 
     Impl* impl = impl_.get();
     std::vector<AudioBuffer> stems = separateWith(
-        stereo, [impl, progress](const DemucsSegmentIn& in, DemucsSegmentOut& out) { impl->run(in, out, progress, 0.0, 0.0); },
+        stereo, [impl, progress](const DemucsSegmentIn& in, DemucsSegmentOut& out) { impl->run(in, out, progress); },
         impl_->stems, impl_->segment, impl_->config.nFft, impl_->config.hop, impl_->config.overlap, progress);
 
-    if (progress) progress->set(0.92, "resampling stems");
+    if (progress) progress->set(0.9, "resampling stems");
     for (auto& s : stems) {
         s = resample(s, inRate);
         for (auto& ch : s.channels) ch.resize(inFrames, 0.0f);
     }
-    if (progress) progress->set(1.0, "done");
+    // The caller reports what follows (writing files, "done").
+    if (progress) progress->set(0.92, "separated");
     return stems;
 }
 

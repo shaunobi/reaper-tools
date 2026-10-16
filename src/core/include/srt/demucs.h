@@ -39,6 +39,9 @@ struct DemucsConfig {
 struct DemucsSegmentIn {
     std::vector<float> mix;
     std::vector<float> specReal, specImag;
+    // The slice of the overall progress this segment covers, so a model
+    // running several passes can report inside it.
+    double progressFrom = 0.0, progressTo = 0.0;
 };
 struct DemucsSegmentOut {
     std::vector<float> specReal, specImag;
