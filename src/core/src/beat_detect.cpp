@@ -27,7 +27,48 @@ std::string fmt(double v, int decimals = 1) {
     return s.str();
 }
 
+// Level in dB around a beat: RMS over -10..+80 ms, which covers the hit even
+// when the 20 ms model grid places the beat slightly early or late.
+double beatLevelDb(const std::vector<float>& mono, double sampleRate, double time) {
+    const long long begin = std::max(0LL, static_cast<long long>(std::llround((time - 0.01) * sampleRate)));
+    const long long end = std::min(static_cast<long long>(mono.size()), static_cast<long long>(std::llround((time + 0.08) * sampleRate)));
+    if (end <= begin) return -120.0;
+    double acc = 0.0;
+    for (long long i = begin; i < end; ++i) acc += static_cast<double>(mono[static_cast<size_t>(i)]) * mono[static_cast<size_t>(i)];
+    const double rms = std::sqrt(acc / static_cast<double>(end - begin));
+    return rms > 1e-9 ? 20.0 * std::log10(rms) : -120.0;
+}
+
 } // namespace
+
+std::pair<int, int> gateQuietEnds(const std::vector<float>& mono, double sampleRate, BeatEvents& events, double gateDb) {
+    constexpr size_t kMinBeats = 4;
+    if (gateDb <= 0.0 || events.beats.size() <= kMinBeats || sampleRate <= 0.0) return {0, 0};
+    std::vector<double> level;
+    level.reserve(events.beats.size());
+    for (double t : events.beats) level.push_back(beatLevelDb(mono, sampleRate, t));
+    std::vector<double> sorted = level;
+    std::nth_element(sorted.begin(), sorted.begin() + static_cast<long>(sorted.size() / 2), sorted.end());
+    const double floor = sorted[sorted.size() / 2] - gateDb;
+
+    size_t first = 0;
+    while (first < level.size() && level[first] < floor) ++first;
+    size_t last = level.size(); // one past the last kept beat
+    while (last > first && level[last - 1] < floor) --last;
+    if (last - first < kMinBeats) return {0, 0};
+    const int lead = static_cast<int>(first);
+    const int trail = static_cast<int>(level.size() - last);
+    if (lead == 0 && trail == 0) return {0, 0};
+
+    const double firstTime = events.beats[first] - 1e-6;
+    const double lastTime = events.beats[last - 1] + 1e-6;
+    events.beats.erase(events.beats.begin() + static_cast<long>(last), events.beats.end());
+    events.beats.erase(events.beats.begin(), events.beats.begin() + static_cast<long>(first));
+    events.downbeats.erase(std::remove_if(events.downbeats.begin(), events.downbeats.end(),
+                                          [&](double t) { return t < firstTime || t > lastTime; }),
+                           events.downbeats.end());
+    return {lead, trail};
+}
 
 BeatDetectResult detectBeats(const BeatTracker& tracker, const AudioBuffer& audio, const BeatDetectOptions& options,
                              Progress* progress) {
@@ -42,12 +83,26 @@ BeatDetectResult detectBeats(const BeatTracker& tracker, const AudioBuffer& audi
     } else {
         r.modelEvents = pickPeaksMinimal(act);
     }
+
+    std::vector<float> mono;
+    if (options.quietGateDb > 0.0 || options.refineOnsets) mono = audio.mixToMono();
+
+    if (options.quietGateDb > 0.0) {
+        const auto dropped = gateQuietEnds(mono, audio.sampleRate, r.modelEvents, options.quietGateDb);
+        r.gatedLeading = dropped.first;
+        r.gatedTrailing = dropped.second;
+        if (r.gatedLeading > 0)
+            r.notes.push_back("ignored " + std::to_string(r.gatedLeading) + " beat(s) in the lead-in, more than " +
+                              fmt(options.quietGateDb, 0) + " dB below the rest (count-in or bleed)");
+        if (r.gatedTrailing > 0)
+            r.notes.push_back("ignored " + std::to_string(r.gatedTrailing) + " beat(s) at the end, more than " +
+                              fmt(options.quietGateDb, 0) + " dB below the rest");
+    }
     r.tempoBpm = estimateTempoBpm(r.modelEvents.beats);
 
     r.events = r.modelEvents;
     if (options.refineOnsets && !r.modelEvents.beats.empty()) {
         if (progress) progress->set(0.96, "refining onsets");
-        std::vector<float> mono = audio.mixToMono();
         r.events.beats = refineOnsets(mono, audio.sampleRate, r.modelEvents.beats);
         r.events.downbeats = refineOnsets(mono, audio.sampleRate, r.modelEvents.downbeats);
     }

@@ -39,7 +39,7 @@ int usage() {
               "  srt_cli smoke [model.onnx]      run the smoke model (embedded copy if no path)\n"
               "  srt_cli wavinfo <file.wav>      print channel count, rate and length\n"
               "  srt_cli beats <file.wav> --model <beat-this.onnx> [--provider cpu|directml|coreml]\n"
-              "                                  [--tempo <bpm>] [--minimal] [--no-refine] [--csv]\n"
+              "                                  [--tempo <bpm>] [--minimal] [--no-refine] [--gate-db <dB>] [--csv]\n"
               "                                  detect beats and downbeats; --tempo constrains the decoder\n"
               "                                  to +/-15% of the given tempo, --minimal uses plain peak picking\n"
               "  srt_cli mel <file.wav> <out.f32>  write the log-mel spectrogram (frames x 128 float32)\n"
@@ -101,6 +101,7 @@ int main(int argc, char** argv) {
                 else if (a == "--tempo" && i + 1 < argc) opt.tempoHintBpm = std::atof(argv[++i]);
                 else if (a == "--minimal") opt.useDbn = false;
                 else if (a == "--no-refine") opt.refineOnsets = false;
+                else if (a == "--gate-db" && i + 1 < argc) opt.quietGateDb = std::atof(argv[++i]);
                 else if (a == "--csv") csv = true;
                 else return usage();
             }

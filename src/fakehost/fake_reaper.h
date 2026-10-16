@@ -43,6 +43,7 @@ public:
     double position = 0.0;
     double length = 0.0;
     bool selected = false;
+    double snapOffset = 0.0; // D_SNAPOFFSET: seconds from the item start that snap to the grid
     int timebase = -1; // C_BEATATTACHMODE: -1 track/project default, 0 time, 1 beats, 2 beats (position only)
     std::vector<std::unique_ptr<MediaItem_Take>> takes;
     std::map<std::string, std::string> ext;
@@ -92,6 +93,10 @@ struct Host {
     // Project helpers.
     MediaTrack* addTrack(const std::string& name);
     MediaItem* addItem(MediaTrack* track, const std::string& takeName, const std::string& wavPath, double position);
+    // A line from the extension's log (timestamped). Fed by the headless log
+    // window when the extension is linked in, or by tailing the log file
+    // when a separately built extension is loaded with --plugin.
+    void logLine(const std::string& stamped);
     double barTime(int displayedBar) const; // project time of a displayed bar's start
     std::vector<std::string> dump() const; // readable project state
 };

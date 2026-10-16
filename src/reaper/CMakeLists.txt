@@ -37,7 +37,7 @@ function(srt_keep_plugin_entry target)
   endif()
 endfunction()
 
-set(_sources progress_window.cpp)
+set(_sources progress_window.cpp log_window.cpp)
 
 if(WIN32)
   list(APPEND _sources resource.rc)

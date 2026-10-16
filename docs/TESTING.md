@@ -1,8 +1,11 @@
 # Manual test checklist (run inside REAPER)
 
 These checks need a real REAPER. Do them on a copy of a project. Every
-action prints to the ReaScript console (View > ReaScript console), so keep
-it open.
+action reports to the SRT log window: run "SRT: Show/hide log window" from
+the action list and leave it open. It keeps everything from this session
+and the end of earlier ones (the file is `<resource path>/SRT/srt.log`);
+closing it only hides it. Nothing is ever written to the ReaScript
+console. The log window opens by itself only when an error is logged.
 
 ## Install
 
@@ -12,7 +15,9 @@ it open.
 2. Restart REAPER. Models download on first use: the action asks first,
    shows progress in the jobs window, and verifies the file. If the download
    cannot run, the console prints the URL and the exact path to save to.
-3. Restart REAPER. The console should show `SRT: loaded version ...`.
+3. Restart REAPER. Nothing should pop up. Open the log window: it shows
+   `SRT: loaded version ...` with a timestamp, under a line marking where
+   the previous session's log ends.
 
 ## SRT: About
 
@@ -44,7 +49,14 @@ anywhere on a track, no stretch markers.
 6. Try an item that already has three or more markers: it asks before
    removing them; answer No and nothing changes.
 7. Try a MIDI item: it is skipped with a console message.
+7a. A recording with a faint count-in or click bleed before the first hit:
+    the console says how many lead-in beats were ignored, and the first
+    real hit is the first downbeat. Nothing before it counts as a bar.
 8. Try with a project that starts at bar 1: the first downbeat goes to bar 2.
+8a. Same project, a recording with more than a bar of lead-in before the
+    first hit (a count-in): the console says the lead-in does not fit before
+    bar 2 and names the bar used instead; the item starts at or after 0 and
+    the markers sit exactly on bar lines.
 9. Tempo guard: set the project tempo well away from the recording (a
    136 BPM take in a 120 BPM project). The action asks before fitting,
    naming both tempos and the stretch; No leaves the item untouched, Yes
@@ -61,10 +73,19 @@ at a clearly different tempo, plus one or two other items on other tracks.
 2. The question that follows names the detected tempo and says how many
    other items follow the tempo (and will move or stretch) and how many are
    on the Time base (and will stay put). Check those counts against the
-   items' timebase settings (item properties, or the project default).
+   items' timebase settings (item properties, or the project default). If
+   the recording itself is on a Beats timebase (REAPER's default), the
+   question also says it will be set to the Time base.
 3. Answer No: the console says the tempo was left alone; nothing changed.
 4. Run again, answer Yes: the project tempo changes to the detected value,
-   the other items react as the question said, one undo step restores all.
+   the other items react as the question said, and the recording slides so
+   its first hit sits on the bar line the console names (bar 1 with lead-in
+   bars, else bar 2, or later if the lead-in does not fit). It keeps its
+   length and playrate (item properties: timebase is now Time, no stretch
+   markers); it must not shrink or stretch. The small snap-offset triangle
+   at the bottom of the item sits on the first hit: drag the item with snap
+   on and the hit, not the item edge, snaps to the grid. One undo step
+   restores all.
 5. Add a tempo marker somewhere, run again: it reports but does not offer
    to change anything, and says the project has a tempo map.
 

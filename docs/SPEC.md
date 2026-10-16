@@ -72,7 +72,7 @@ Every entry here was agreed in conversation. Change them only on purpose.
 | Alignment resolution | Whole bars (downbeats). Hard snap, no strength setting. |
 | Tempo assumption | The recording's tempo is within about 15% of the project tempo at the item position. The tool uses that as a constraint. |
 | First and last bar | A "first" and "last" stretch marker define bar 1 and the final downbeat. If the user has placed them, the tool trusts them. If not, the tool detects them. Snap offset is not used. |
-| Where bar 1 lands | The first downbeat goes to project bar 1. Shaun's projects normally start at bar -2, so lead-in audio before bar 1 has room. If the project has no bars before bar 1, the first downbeat goes to bar 2 instead. |
+| Where bar 1 lands | The first downbeat goes to project bar 1. Shaun's projects normally start at bar -2, so lead-in audio before bar 1 has room. If the project has no bars before bar 1, the first downbeat goes to bar 2 instead. If the lead-in before the first downbeat is longer than the room before that bar (the item would have to start before the project start, which REAPER silently refuses), the first bar with enough room is used and the console says so. |
 | Last bar | The final downbeat that has a hit on it, not the end of the final bar. |
 | Existing stretch markers | Ask before clearing, then clear. |
 | Stretch algorithm | Whatever the item already has. Not changed. |
@@ -288,9 +288,19 @@ it: a live take at an unknown tempo at the start of a project.
 3. Otherwise count what a tempo change would do to every other item, by its
    effective timebase (item setting, else track, else project default):
    items on "Beats" move or stretch with the tempo; items on "Time" stay put
-   in seconds and come off the grid. Ask "Set the project tempo to X?" with
-   those counts in the question. Yes sets the project tempo in one undo
-   block; No leaves everything alone.
+   in seconds and come off the grid. Ask "Set the project tempo to X and
+   move the recording so its first downbeat sits on a bar line?" with those
+   counts in the question. Yes, in one undo block: pins the recording to the
+   Time base if it followed the tempo (otherwise the tempo change would
+   rescale it), sets the project tempo, then slides the recording (no
+   stretching, no markers) so its first downbeat lands on the same target
+   bar Fit would use, including the later-bar rule when the lead-in does
+   not fit, and sets the item snap offset to that downbeat so a hand nudge
+   with snap on keeps it on the grid. No leaves everything alone. Fit and
+   Conform remain for recordings that drift; a take played to a click only
+   needs this.
+
+Fit and Conform also set the item snap offset to the bar 1 marker.
 
 Not done (possible follow-up): "set the tempo and keep every other item
 where it is", which would switch the other items to the Time base first.
@@ -344,10 +354,22 @@ tempo estimate, confidence.
      in C++) constrained to the tempo range `project_tempo × [0.85, 1.15]`.
      This uses the project tempo as a prior and removes half/double-tempo
      errors.
-5. **Onset refinement.** For each downbeat, compute a spectral-flux onset
-   curve at 2 ms resolution over a ±60 ms window and move the downbeat to
-   the strongest onset. On a drum stem this gives sample-accurate placement.
-6. **Confidence.**
+5. **Quiet-ends gate.** The model hears count-in bleed, click leakage and
+   room noise before the first hit and turns them into phantom beats and a
+   phantom bar. The level around each decoded beat (RMS over -10..+80 ms)
+   is compared with the median over all beats; leading and trailing beats
+   more than 20 dB below it are dropped, together with any downbeats
+   outside the surviving beats. Never trims to fewer than four beats. The
+   console says how many beats were ignored. Setting: `quietGateDb`,
+   0 disables (`srt_cli beats --gate-db`).
+6. **Onset refinement.** For each downbeat, compute a spectral-flux onset
+   curve at 2 ms resolution over a ±60 ms window and find the strongest
+   onset. The flux peaks only once a good part of the attack is inside the
+   analysis frame, 10-25 ms late on cymbal-heavy hits, so the refiner then
+   walks back up to two frames in 1 ms slices and places the event where
+   the level first rises clearly above the floor before the hit: the start
+   of the transient. On a drum stem this gives placement within a few ms.
+7. **Confidence.**
    - high: tempo within 5% of project tempo, downbeat spacing regular
      (standard deviation under 3% of a bar), model downbeat scores strong.
    - medium: one of those fails.
@@ -517,8 +539,15 @@ assumption; correct any that are wrong.
 5. **Source rate and stem rate.** Assumed: stems are written at the source
    file's rate, which may differ from the project rate. If Shaun prefers
    project rate, that is a one-line change.
-6. **Console versus popup for confidence warnings.** Assumed: console only,
-   never a popup, so batch runs are not interrupted.
+6. **Where messages go.** Decided (Shaun, October 2026): the extension has
+   its own log window, toggled by "SRT: Show/hide log window". Every line
+   goes there, to an in-memory history for the session, and to
+   `<resource path>/SRT/srt.log` (the tail of which is loaded at startup so
+   the window also shows the previous sessions). Closing the window hides
+   it; nothing is lost. It opens by itself only on an error line. Nothing
+   is ever written to REAPER's ReaScript console, because that console pops
+   up on every write and clears when closed. No popups for warnings, so
+   batch runs are not interrupted.
 7. **Downloaded model location.** Assumed: REAPER resource path, so it is
    per user and survives REAPER updates.
 8. **Copyright holder for the BSD licence.** Assumed: "Shaunobi's Reaper

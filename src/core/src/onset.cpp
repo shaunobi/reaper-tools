@@ -61,7 +61,41 @@ double refineOnset(const std::vector<float>& mono, double sampleRate, double tim
         std::swap(prev, cur);
     }
     if (bestFlux <= 0.0f) return time;
-    // The flux frame ends at bestPos; the attack sits inside the last hop of it.
+
+    // The flux peaks once a good part of the attack is inside the frame that
+    // ends at bestPos, so the attack itself started somewhere in that frame.
+    // Walk the frame in 1 ms slices and return the first slice whose level
+    // rises clearly above the floor just before the frame: that is the
+    // transient's start, which is what a stretch marker or snap offset
+    // should sit on. (Measured on real overheads, the flux peak alone is
+    // 10-25 ms late on cymbal-heavy hits.)
+    const long slice = std::max(1L, static_cast<long>(std::lround(0.001 * sampleRate)));
+    const long len = static_cast<long>(mono.size());
+    auto sliceRms = [&](long start) {
+        double acc = 0.0;
+        long count = 0;
+        for (long i = start; i < start + slice; ++i) {
+            if (i < 0 || i >= len) continue;
+            acc += static_cast<double>(mono[static_cast<size_t>(i)]) * mono[static_cast<size_t>(i)];
+            ++count;
+        }
+        return count ? std::sqrt(acc / static_cast<double>(count)) : 0.0;
+    };
+    // Scan two frames back: a soft attack inside a cymbal wash can peak the
+    // flux 15-25 ms after it starts.
+    const long frameStart = bestPos - 2 * n;
+    // Floor: the quietest-ish level in the 10 ms before the frame (median of slices).
+    std::vector<double> before;
+    for (long s = frameStart - 10 * slice; s < frameStart; s += slice) before.push_back(sliceRms(s));
+    std::nth_element(before.begin(), before.begin() + static_cast<long>(before.size() / 2), before.end());
+    const double floor = before.empty() ? 0.0 : before[before.size() / 2];
+    // Peak: the loudest slice from the frame start to a little past the flux peak.
+    double peak = 0.0;
+    for (long s = frameStart; s <= bestPos + n / 2; s += slice) peak = std::max(peak, sliceRms(s));
+    if (peak <= floor) return static_cast<double>(bestPos - hop / 2) / sampleRate;
+    const double threshold = std::max(floor + 0.25 * (peak - floor), 2.0 * floor);
+    for (long s = frameStart; s <= bestPos; s += slice)
+        if (sliceRms(s) >= threshold) return static_cast<double>(s) / sampleRate;
     return static_cast<double>(bestPos - hop / 2) / sampleRate;
 }
 

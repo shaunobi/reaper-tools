@@ -42,6 +42,7 @@ add_executable(srt_tests
   test_onset.cpp
   test_beat_tracker.cpp
   test_beat_dbn.cpp
+  test_beat_gate.cpp
   test_grid_fit.cpp
   test_stft.cpp
   test_separator.cpp

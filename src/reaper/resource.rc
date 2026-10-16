@@ -25,3 +25,16 @@ BEGIN
     LTEXT           "",IDC_SRT_MORE,8,112,200,10
     PUSHBUTTON      "Cancel all",IDC_SRT_CANCEL_ALL,280,118,54,14
 END
+
+// The SRT log: every line the extension reports, for the whole REAPER
+// session and the tail of earlier sessions. Resizable; log_window.cpp
+// stretches the text box and parks the bottom row on WM_SIZE.
+IDD_SRT_LOG DIALOGEX 0, 0, 420, 240
+STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+CAPTION "SRT log"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    EDITTEXT        IDC_SRT_LOG_TEXT,6,6,408,208,ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | WS_HSCROLL | ES_AUTOHSCROLL
+    LTEXT           "",IDC_SRT_LOG_PATH,6,222,354,10
+    PUSHBUTTON      "Clear",IDC_SRT_LOG_CLEAR,370,220,44,14
+END

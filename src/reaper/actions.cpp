@@ -15,6 +15,7 @@ ActionDef g_actions[] = {
     {"SRT_FIT_DRUMS_TO_GRID", "SRT: Fit drums to grid (first and last bar of selected items)", &actionFitDrumsToGrid},
     {"SRT_CONFORM_DRUM_BARS", "SRT: Conform drum bars (stretch marker on every downbeat of selected items)",
      &actionConformDrumBars},
+    {"SRT_SHOW_LOG", "SRT: Show/hide log window", &actionShowLog},
 };
 
 bool hookCommand(int command, int) {

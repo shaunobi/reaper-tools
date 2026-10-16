@@ -69,6 +69,9 @@ std::string trimNewline(std::string s) {
 // ---- console, dialogs, misc ------------------------------------------------
 
 void f_ShowConsoleMsg(const char* msg) {
+    // The extension no longer writes to the ReaScript console (only the
+    // too-old-REAPER message at load does); log lines arrive through
+    // Host::logLine instead.
     std::string line = trimNewline(msg ? msg : "");
     H().console.push_back(line);
     if (H().echoConsole) std::printf("%s\n", line.c_str());
@@ -153,7 +156,31 @@ MediaItem* f_GetMediaItem(ReaProject* p, int idx) {
 }
 MediaTrack* f_GetMediaItem_Track(MediaItem* item) { return item->track; }
 int f_CountTempoTimeSigMarkers(ReaProject* p) { return proj(p)->tempoMarkers; }
-void f_SetCurrentBPM(ReaProject* p, double bpm, bool) { proj(p)->bpm = bpm; }
+// Effective timebase of an item: its own, else its track's, else the project default.
+int effectiveTimebase(ReaProject* p, MediaItem* item) {
+    if (item->timebase >= 0) return item->timebase;
+    if (item->track && item->track->timebase >= 0) return item->track->timebase;
+    return proj(p)->itemTimebase;
+}
+// A tempo change moves and rescales items the way REAPER does: items on the
+// Beats timebase keep their position in beats, so they move in seconds; with
+// "position, length, rate" they are also stretched (length in seconds scales,
+// playrate scales the other way). Items on the Time base stay put.
+void f_SetCurrentBPM(ReaProject* p, double bpm, bool) {
+    ReaProject* P = proj(p);
+    const double ratio = P->bpm / bpm; // seconds per beat, new over old
+    for (auto& t : P->tracks)
+        for (auto& i : t->items) {
+            const int tb = effectiveTimebase(P, i.get());
+            if (tb == 0) continue;
+            i->position *= ratio;
+            if (tb == 1) {
+                i->length *= ratio;
+                for (auto& take : i->takes) take->playrate /= ratio;
+            }
+        }
+    P->bpm = bpm;
+}
 // Project config variables: only the item timebase is modelled.
 int f_projectconfig_var_getoffs(const char* name, int* szOut) {
     if (name && std::strcmp(name, "itemtimelock") == 0) {
@@ -189,6 +216,7 @@ double f_GetMediaItemInfo_Value(MediaItem* item, const char* parm) {
     if (p == "D_POSITION") return item->position;
     if (p == "D_LENGTH") return item->length;
     if (p == "C_BEATATTACHMODE") return item->timebase;
+    if (p == "D_SNAPOFFSET") return item->snapOffset;
     std::printf("[fakehost] GetMediaItemInfo_Value(%s) unsupported\n", p.c_str());
     return 0.0;
 }
@@ -196,10 +224,21 @@ bool f_SetMediaItemInfo_Value(MediaItem* item, const char* parm, double v) {
     std::string p = parm ? parm : "";
     if (p == "D_POSITION") { item->position = v; return true; }
     if (p == "D_LENGTH") { item->length = v; return true; }
+    if (p == "C_BEATATTACHMODE") { item->timebase = static_cast<int>(v); return true; }
+    if (p == "D_SNAPOFFSET") { item->snapOffset = v; return true; }
     std::printf("[fakehost] SetMediaItemInfo_Value(%s) unsupported\n", p.c_str());
     return false;
 }
-bool f_SetMediaItemPosition(MediaItem* item, double pos, bool) { item->position = pos; return true; }
+// REAPER never places an item before the project start: a negative position
+// is clamped to 0, which silently shifts everything the caller planned.
+bool f_SetMediaItemPosition(MediaItem* item, double pos, bool) {
+    if (pos < 0.0) {
+        std::printf("[fakehost] SetMediaItemPosition(%.4f) clamped to 0 as REAPER would\n", pos);
+        pos = 0.0;
+    }
+    item->position = pos;
+    return true;
+}
 bool f_SetMediaItemLength(MediaItem* item, double len, bool) { item->length = len; return true; }
 double f_GetMediaItemTakeInfo_Value(MediaItem_Take* take, const char* parm) {
     std::string p = parm ? parm : "";
@@ -475,6 +514,14 @@ MediaItem* Host::addItem(MediaTrack* track, const std::string& takeName, const s
     return track->items.back().get();
 }
 
+void Host::logLine(const std::string& stamped) {
+    // Lines come as "HH:MM:SS SRT: ..."; keep the part after the timestamp so
+    // the scenarios match on "SRT: ..." as before.
+    std::string line = stamped.size() > 9 && stamped[8] == ' ' ? stamped.substr(9) : stamped;
+    console.push_back(line);
+    if (echoConsole) std::printf("%s\n", line.c_str());
+}
+
 double Host::barTime(int displayedBar) const {
     const int measure = displayedBar - project.startBar;
     return measure * (60.0 / project.bpm) * project.beatsPerBar;
@@ -489,8 +536,8 @@ std::vector<std::string> Host::dump() const {
         out.push_back(buf);
         for (const auto& item : tr->items) {
             const auto* take = item->activeTake();
-            std::snprintf(buf, sizeof(buf), "  item pos %.4f len %.4f take \"%s\" startoffs %.4f rate %.3f source %s",
-                          item->position, item->length, take ? take->name.c_str() : "", take ? take->startOffset : 0.0,
+            std::snprintf(buf, sizeof(buf), "  item pos %.4f len %.4f snapoffs %.4f take \"%s\" startoffs %.4f rate %.3f source %s",
+                          item->position, item->length, item->snapOffset, take ? take->name.c_str() : "", take ? take->startOffset : 0.0,
                           take ? take->playrate : 1.0,
                           take && take->source ? (take->source->GetFileName() ? take->source->GetFileName() : "?") : "none");
             out.push_back(buf);

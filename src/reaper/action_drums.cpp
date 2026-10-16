@@ -261,10 +261,32 @@ void applyFit(const DrumJob& job, const Ends& ends, srt::GridFitPlan& plan, int&
     in.lastBarTime = measureStartTime(ctx.proj, firstMeasure + ends.bars);
     plan = srt::planGridFit(in);
 
+    // The lead-in before the first downbeat is kept, so the item must start
+    // that much before the target bar line. REAPER cannot place an item
+    // before the project start (it would silently stay at 0 and the whole
+    // fit would land late), so move the target to the first bar that leaves
+    // room.
+    const int wanted = firstMeasure;
+    while (plan.itemPosition < 0.0 && firstMeasure - wanted < 64) {
+        ++firstMeasure;
+        in.firstBarTime = measureStartTime(ctx.proj, firstMeasure);
+        in.lastBarTime = measureStartTime(ctx.proj, firstMeasure + ends.bars);
+        plan = srt::planGridFit(in);
+    }
+    if (firstMeasure != wanted)
+        console("  the " + fmt((ends.firstSrc - ctx.srcStart) / ctx.playrate, 2) +
+                " s of audio before the first downbeat does not fit before bar " +
+                std::to_string(displayedBarForMeasure(ctx.proj, wanted)) + "; using bar " +
+                std::to_string(displayedBarForMeasure(ctx.proj, firstMeasure)) +
+                " instead (add lead-in bars to the project to use bar " +
+                std::to_string(displayedBarForMeasure(ctx.proj, wanted)) + ")");
+
     SetMediaItemPosition(ctx.item, plan.itemPosition, false);
     SetMediaItemLength(ctx.item, plan.itemLength, false);
     SetTakeStretchMarker(ctx.take, -1, plan.first.itemPos, &plan.first.srcPos);
     SetTakeStretchMarker(ctx.take, -1, plan.last.itemPos, &plan.last.srcPos);
+    // Snap offset on the first downbeat, so a hand nudge with snap on keeps bar 1 on the grid.
+    SetMediaItemInfo_Value(ctx.item, "D_SNAPOFFSET", plan.first.itemPos);
     setExt(ctx.item, kExtFirst, fmt(ends.firstSrc, 6));
     setExt(ctx.item, kExtLast, fmt(ends.lastSrc, 6));
     setExt(ctx.item, kExtBars, std::to_string(ends.bars));
@@ -440,7 +462,16 @@ void onDetectDone(const srt::JobStatus& st, srt::Job& base) {
         if (!other || other == ctx.item) continue;
         (itemTimebase(ctx.proj, other) == 0 ? fixed : follow)++;
     }
-    std::string q = "Set the project tempo to " + fmt(r.tempoBpm, 2) + " BPM (currently " + fmt(ctx.tempoHint, 2) + ")?\n\n";
+    // The recording itself defines the tempo, so it must not be rescaled or
+    // moved by the change. If its effective timebase follows the tempo, pin
+    // it to Time first (otherwise REAPER would shrink or stretch it).
+    const bool pinItem = itemTimebase(ctx.proj, ctx.item) != 0;
+    const bool canSlide = !r.events.downbeats.empty();
+    std::string q = "Set the project tempo to " + fmt(r.tempoBpm, 2) + " BPM (currently " + fmt(ctx.tempoHint, 2) + ")";
+    q += canSlide ? ", and move \"" + ctx.label + "\" so its first downbeat sits on a bar line?\n\n"
+                  : "?\n\n";
+    if (pinItem) q += "\"" + ctx.label + "\" will be set to the Time base so it keeps its length" +
+                      std::string(canSlide ? "" : " and position") + ".\n\n";
     if (follow + fixed == 0) {
         q += "No other items are affected.";
     } else {
@@ -453,10 +484,38 @@ void onDetectDone(const srt::JobStatus& st, srt::Job& base) {
         return;
     }
     Undo_BeginBlock2(ctx.proj);
+    if (pinItem) {
+        SetMediaItemInfo_Value(ctx.item, "C_BEATATTACHMODE", 0.0);
+        console("  \"" + ctx.label + "\" set to the Time base so the tempo change leaves it alone");
+    }
     SetCurrentBPM(ctx.proj, r.tempoBpm, false);
+    console("  project tempo set to " + fmt(r.tempoBpm, 2) + " BPM");
+
+    if (canSlide) {
+        // Slide the item (no stretching) so the first downbeat lands on the
+        // target bar line, computed at the new tempo. Same bar rule as Fit,
+        // including moving to a later bar when the lead-in would not fit
+        // before the project start. The snap offset marks the downbeat so a
+        // later hand nudge with snap on keeps it on the grid.
+        const double firstItemTime = r.events.downbeats.front() / ctx.playrate;
+        const int wanted = targetMeasureForBarOne(ctx.proj);
+        int measure = wanted;
+        double position = measureStartTime(ctx.proj, measure) - firstItemTime;
+        while (position < 0.0 && measure - wanted < 64) position = measureStartTime(ctx.proj, ++measure) - firstItemTime;
+        if (measure != wanted)
+            console("  the " + fmt(firstItemTime, 2) + " s of audio before the first downbeat does not fit before bar " +
+                    std::to_string(displayedBarForMeasure(ctx.proj, wanted)) + "; using bar " +
+                    std::to_string(displayedBarForMeasure(ctx.proj, measure)) + " instead");
+        SetMediaItemPosition(ctx.item, position, false);
+        SetMediaItemInfo_Value(ctx.item, "D_SNAPOFFSET", firstItemTime);
+        UpdateItemInProject(ctx.item);
+        console("  moved \"" + ctx.label + "\" so its first downbeat is on bar " +
+                std::to_string(displayedBarForMeasure(ctx.proj, measure)) + " (no stretching); snap offset set to that downbeat");
+    } else {
+        console("  no downbeat found, so the item was not moved");
+    }
     Undo_EndBlock2(ctx.proj, "SRT: Set project tempo from recording", -1);
     UpdateArrange();
-    console("  project tempo set to " + fmt(r.tempoBpm, 2) + " BPM");
 }
 
 void runDetectWithModel(const std::filesystem::path& model) {

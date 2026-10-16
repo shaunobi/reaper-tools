@@ -19,6 +19,9 @@
 #include "fake_reaper.h"
 #include "host.h"
 #include "models.h"
+#include "srt/wav.h"
+
+#include <algorithm>
 
 #include <chrono>
 #include <cmath>
@@ -47,13 +50,24 @@ namespace {
 int g_failures = 0;
 
 // Folders are found relative to this program, which sits at
-// <build>/src/fakehost: the models the unit tests download live in
-// <build>/_models and the fake project's files go under <build>/fakehost.
-// (Relative to the program rather than baked in at build time so the same
-// binary works under Wine, where the build folder has a Windows path.)
+// <build>/src/fakehost (single-config generators) or
+// <build>/src/fakehost/<Config> (Visual Studio, Xcode): the models the unit
+// tests download live in <build>/_models and the fake project's files go
+// under <build>/fakehost. The build folder is the nearest ancestor that holds
+// "_models". (Relative to the program rather than baked in at build time so
+// the same binary works under Wine, where the build folder has a Windows
+// path.)
 fs::path g_exeDir;
-fs::path modelsCacheDir() { return g_exeDir / ".." / ".." / "_models"; }
-fs::path workRootDir() { return g_exeDir / ".." / ".." / "fakehost"; }
+fs::path buildRootDir() {
+    fs::path dir = g_exeDir;
+    for (int up = 0; up < 4 && !dir.empty(); ++up) {
+        if (fs::is_directory(dir / "_models")) return dir;
+        dir = dir.parent_path();
+    }
+    return g_exeDir / ".." / "..";
+}
+fs::path modelsCacheDir() { return buildRootDir() / "_models"; }
+fs::path workRootDir() { return buildRootDir() / "fakehost"; }
 
 // The entry point to drive: ours (linked in) unless --plugin names a library.
 using EntryFn = int (*)(REAPER_PLUGIN_HINSTANCE, reaper_plugin_info_t*);
@@ -103,6 +117,35 @@ bool askedContains(const std::string& needle) {
     return false;
 }
 
+// With --plugin the extension's own log window code runs (no headless
+// replacement), so its lines are read from the log file it writes in the
+// fake project's resource folder, as they appear.
+std::streamoff g_logOffset = 0;
+fs::path logFile() { return fs::path(fake::host().project.resourcePath) / "SRT" / "srt.log"; }
+void markLogStart() {
+    std::error_code ec;
+    const auto size = fs::file_size(logFile(), ec);
+    g_logOffset = ec ? 0 : static_cast<std::streamoff>(size);
+}
+void pollLogFile() {
+    if (!g_external) return;
+    std::ifstream f(logFile(), std::ios::binary);
+    if (!f) return;
+    f.seekg(g_logOffset);
+    std::string rest((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    // Only complete lines; a partial last line waits for its newline.
+    size_t pos = 0;
+    for (;;) {
+        const size_t nl = rest.find('\n', pos);
+        if (nl == std::string::npos) break;
+        std::string line = rest.substr(pos, nl - pos);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!line.empty()) fake::host().logLine(line);
+        pos = nl + 1;
+    }
+    g_logOffset += static_cast<std::streamoff>(pos);
+}
+
 bool consoleContains(const std::string& needle) {
     for (const auto& line : fake::host().console)
         if (line.find(needle) != std::string::npos) return true;
@@ -142,10 +185,13 @@ void prepareWorkDir(fs::path& media, fs::path& resource) {
 }
 
 bool loadExtension() {
+    markLogStart();
     reaper_plugin_info_t rec = fake::host().pluginInfo();
     const int rc = g_entry(g_instance, &rec);
+    pollLogFile(); // the "loaded version" line, when the extension is external
     check(rc == 1, "ReaperPluginEntry returned 1");
     check(fake::host().commandId("SRT_ABOUT") != 0, "SRT_ABOUT registered");
+    check(fake::host().commandId("SRT_SHOW_LOG") != 0, "SRT_SHOW_LOG registered");
     check(fake::host().commandId("SRT_FIT_DRUMS_TO_GRID") != 0, "SRT_FIT_DRUMS_TO_GRID registered");
     check(fake::host().commandId("SRT_CONFORM_DRUM_BARS") != 0, "SRT_CONFORM_DRUM_BARS registered");
     check(fake::host().commandId("SRT_SEPARATE_STEMS") != 0, "SRT_SEPARATE_STEMS registered");
@@ -196,6 +242,7 @@ void runAndWait(const std::string& idString, double timeoutSeconds = 1800.0) {
     int idleTicks = 0;
     for (;;) {
         fake::host().tick();
+        pollLogFile();
         const bool busy = !g_external && srt::reaper::jobs().hasActive();
         if (busy) {
             idleTicks = 0;
@@ -224,6 +271,8 @@ struct DrumOptions {
     double position = 3.0;
     double expectBpm = 0.0;
     int answer = 6; // message box answer: 6 = yes, 7 = no
+    double pad = 0.0; // seconds of silence to prepend to the recording (a long lead-in)
+    int expectFirstBar = 0; // bar the first marker must land on; 0 = bar 1 with lead-in bars, else bar 2
 };
 
 bool parseDrumOptions(int argc, char** argv, DrumOptions& o) {
@@ -238,6 +287,8 @@ bool parseDrumOptions(int argc, char** argv, DrumOptions& o) {
         else if (k == "--position") o.position = std::atof(v);
         else if (k == "--expect-bpm") o.expectBpm = std::atof(v);
         else if (k == "--answer") o.answer = std::atoi(v);
+        else if (k == "--pad") o.pad = std::atof(v);
+        else if (k == "--expect-first-bar") o.expectFirstBar = std::atoi(v);
         else return false;
     }
     return true;
@@ -249,7 +300,19 @@ MediaItem* buildDrumProject(const DrumOptions& o) {
     h.project.bpm = o.bpm;
     h.project.startBar = o.startBar;
     MediaTrack* tr = h.addTrack("Drums");
-    MediaItem* item = h.addItem(tr, fs::path(o.wav).stem().string(), o.wav, o.position);
+    std::string wav = o.wav;
+    if (o.pad > 0.0) {
+        // A copy with silence in front, in the fake project's media folder.
+        srt::AudioBuffer src = srt::readWav(o.wav);
+        const size_t extra = static_cast<size_t>(o.pad * src.sampleRate);
+        srt::AudioBuffer padded(src.numChannels(), src.numFrames() + extra, src.sampleRate);
+        for (size_t c = 0; c < src.numChannels(); ++c)
+            std::copy(src.channels[c].begin(), src.channels[c].end(), padded.channels[c].begin() + static_cast<long>(extra));
+        const fs::path out = fs::path(h.project.mediaDir) / (fs::path(o.wav).stem().string() + "_padded.wav");
+        srt::writeWav(out, padded);
+        wav = out.string();
+    }
+    MediaItem* item = h.addItem(tr, fs::path(o.wav).stem().string(), wav, o.position);
     item->selected = true;
     return item;
 }
@@ -269,17 +332,24 @@ int runDrums(int argc, char** argv, bool conform) {
 
     auto& h = fake::host();
     MediaItem_Take* take = item->activeTake();
-    // Bar 1 if the project has bars before it, otherwise bar 2.
-    const int firstBar = o.startBar < 1 ? 1 : 2;
+    // Bar 1 if the project has bars before it, otherwise bar 2; or later when
+    // the lead-in would otherwise push the item before the project start.
+    const int firstBar = o.expectFirstBar > 0 ? o.expectFirstBar : o.startBar < 1 ? 1 : 2;
     const double tol = 0.005;
     const auto& m = take->markers;
     check(item->position != before, "item was moved");
+    check(item->position >= 0.0, "item starts at or after the project start (" + std::to_string(item->position) + " s)");
+    check(!consoleContains("clamped to 0"), "the action never asked for a negative item position");
+    if (o.expectFirstBar > 0)
+        check(consoleContains("does not fit before bar") && consoleContains("using bar " + std::to_string(o.expectFirstBar)),
+              "console explains the later bar");
     check(m.size() >= 2, "at least two stretch markers");
     if (m.size() >= 2) {
         const double firstProj = item->position + m.front().pos;
         const double lastProj = item->position + m.back().pos;
         check(std::fabs(firstProj - h.barTime(firstBar)) < tol,
               "first marker on bar " + std::to_string(firstBar) + " (" + std::to_string(firstProj) + " s)");
+        check(std::fabs(item->snapOffset - m.front().pos) < 1e-9, "snap offset on the first marker");
         auto barsIt = item->ext.find("P_EXT:SRT_BARS");
         check(barsIt != item->ext.end(), "P_EXT:SRT_BARS stored");
         int bars = barsIt != item->ext.end() ? std::atoi(barsIt->second.c_str()) : 0;
@@ -317,9 +387,12 @@ int runTempo(int argc, char** argv) {
     MediaItem* item = buildDrumProject(o);
     // Two bystander items: one follows the tempo (project default), one is on the Time base.
     MediaTrack* other = h.addTrack("Other");
-    h.addItem(other, "follows", o.wav, 30.0);
+    MediaItem* follows = h.addItem(other, "follows", o.wav, 30.0);
     h.addItem(other, "fixed", o.wav, 50.0)->timebase = 0;
     h.messageBoxAnswer = o.answer;
+    const double itemLength = item->length;
+    const double itemRate = item->activeTake()->playrate;
+    const double followsLength = follows->length;
 
     runAndWait("SRT_DETECT_TEMPO");
     dumpProject();
@@ -327,16 +400,35 @@ int runTempo(int argc, char** argv) {
     check(consoleContains("BPM detected"), "tempo reported");
     check(askedContains("1 other item(s) follow the tempo and will move or stretch; 1 are on the Time base"),
           "consequences for the other items spelled out in the question");
-    check(item->activeTake()->markers.empty() && std::fabs(item->position - o.position) < 1e-9, "the item itself untouched");
+    check(item->activeTake()->markers.empty(), "no stretch markers added");
+    check(std::fabs(item->length - itemLength) < 1e-9 && std::fabs(item->activeTake()->playrate - itemRate) < 1e-9,
+          "the item keeps its length and playrate");
     if (o.answer == 6) {
         check(consoleContains("project tempo set to"), "project tempo set");
         if (o.expectBpm > 0.0)
             check(std::fabs(h.project.bpm - o.expectBpm) < 1.5,
                   "project tempo " + std::to_string(h.project.bpm) + " near " + std::to_string(o.expectBpm));
+        check(item->timebase == 0, "the item was pinned to the Time base");
+        check(askedContains("will be set to the Time base"), "the question says the item will be pinned");
+        check(askedContains("move \"" + item->activeTake()->name + "\" so its first downbeat sits on a bar line"),
+              "the question says the item will be moved");
+        check(consoleContains("moved \"") && consoleContains("snap offset set"), "console reports the move and snap offset");
+        check(item->position >= 0.0, "item starts at or after the project start");
+        check(item->snapOffset > 0.0, "snap offset set (" + std::to_string(item->snapOffset) + " s)");
+        // The snap offset (first downbeat) must sit exactly on some bar line at the new tempo.
+        const double downbeatProj = item->position + item->snapOffset;
+        const double barLen = 60.0 / h.project.bpm * h.project.beatsPerBar;
+        const double offGrid = std::fabs(downbeatProj / barLen - std::round(downbeatProj / barLen)) * barLen;
+        check(offGrid < 0.005, "first downbeat on a bar line (" + std::to_string(downbeatProj) + " s, " +
+                                   std::to_string(offGrid * 1000.0) + " ms off)");
+        check(std::fabs(downbeatProj - h.barTime(o.startBar < 1 ? 1 : 2)) < 0.005 || consoleContains("does not fit before bar"),
+              "first downbeat on the target bar, or the console explains a later bar");
+        check(std::fabs(follows->length - followsLength) > 1e-6, "the bystander on the Beats base was rescaled");
         check(h.undoBlocks.size() == 1, "one undo block");
     } else {
         check(consoleContains("project tempo left at"), "declined: tempo left alone");
         check(std::fabs(h.project.bpm - o.bpm) < 1e-9, "project tempo unchanged");
+        check(std::fabs(item->position - o.position) < 1e-9 && item->snapOffset == 0.0, "declined: item not moved, no snap offset");
         check(h.undoBlocks.empty(), "no undo block");
     }
     check(!consoleContains("error:") && !consoleContains("failed on"), "no errors in console");

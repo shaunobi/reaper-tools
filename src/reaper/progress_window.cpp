@@ -34,6 +34,8 @@ srt::JobRunner* g_runner = nullptr;
 std::vector<srt::JobStatus> g_rows;
 size_t g_shownRows = 0;
 std::vector<std::string> g_lastLabels(SRT_PROGRESS_ROWS);
+int g_emptyTicks = 0; // ticks since the list emptied while the window was still visible
+constexpr int kDoneTicks = 40; // about 1.3 s at REAPER's ~30 Hz timer: how long "done" stays up
 
 void showRow(int row, bool show) {
     const int cmd = show ? SW_SHOW : SW_HIDE;
@@ -147,12 +149,26 @@ void progressWindowRefresh(srt::JobRunner& runner) {
     g_rows = runner.statuses();
 
     if (g_rows.empty()) {
-        if (g_hwnd && hadRows) {
+        // Hide whenever there is nothing to show and the window is still up,
+        // not only on the tick that saw the last job go: a re-entrant tick
+        // (REAPER pumps messages inside some API calls made by a job's
+        // completion handler) could otherwise consume that transition and
+        // leave the window parked at 100%.
+        if (g_hwnd && IsWindowVisible(g_hwnd)) {
+            if (!hadRows && g_emptyTicks < kDoneTicks) {
+                // Show "done" briefly instead of vanishing mid-glance.
+                if (g_emptyTicks == 0 && g_shownRows >= 1)
+                    SetDlgItemText(g_hwnd, IDC_SRT_LABEL0, (g_lastLabels[0].substr(0, g_lastLabels[0].find("  ")) + "  done").c_str());
+                ++g_emptyTicks;
+                return;
+            }
             ShowWindow(g_hwnd, SW_HIDE);
             g_shownRows = 0;
         }
+        g_emptyTicks = 0;
         return;
     }
+    g_emptyTicks = 0;
     if (!g_hwnd) {
         console("jobs window: creating");
         g_hwnd = CreateDialogParam(g_hInstance, MAKEINTRESOURCE(IDD_SRT_PROGRESS), GetMainHwnd(), dialogProc, 0);
