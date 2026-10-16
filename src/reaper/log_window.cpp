@@ -38,7 +38,9 @@ void fillFromHistory() {
     SetWindowText(edit, all.c_str());
     const auto len = static_cast<WPARAM>(all.size());
     SendMessage(edit, EM_SETSEL, len, static_cast<LPARAM>(len));
+#ifdef EM_SCROLLCARET // Windows only; SWELL scrolls to the selection by itself
     SendMessage(edit, EM_SCROLLCARET, 0, 0);
+#endif
 }
 
 void layout(HWND hwnd) {
