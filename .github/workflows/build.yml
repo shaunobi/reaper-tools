@@ -22,6 +22,8 @@ jobs:
           key: models-${{ hashFiles('tests/CMakeLists.txt') }}
       - name: Configure
         run: cmake --preset linux-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # release assets of a private repository need it
       - name: Build
         run: cmake --build --preset linux-release
       - name: Test
@@ -40,6 +42,8 @@ jobs:
           key: models-${{ hashFiles('tests/CMakeLists.txt') }}
       - name: Configure
         run: cmake --preset windows-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # release assets of a private repository need it
       - name: Build
         run: cmake --build --preset windows-release
       - name: Test
@@ -66,6 +70,8 @@ jobs:
           key: models-${{ hashFiles('tests/CMakeLists.txt') }}
       - name: Configure
         run: cmake --preset macos-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # release assets of a private repository need it
       - name: Build
         run: cmake --build --preset macos-release
       - name: Test
