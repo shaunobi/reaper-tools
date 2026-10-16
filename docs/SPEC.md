@@ -59,7 +59,7 @@ Every entry here was agreed in conversation. Change them only on purpose.
 | Platforms | Windows x64 first. macOS Apple Silicon second. |
 | Graphics card use | Windows: ONNX Runtime with the DirectML execution provider (works on Nvidia and AMD). macOS: CoreML execution provider. CPU fallback everywhere. Nvidia CUDA is not offered in the first release. |
 | Machine-learning runtime | ONNX Runtime. Models are data files loaded at run time so new models never need a rebuild. |
-| Separation model | Open BS-RoFormer 4-stem checkpoint (drums, bass, other, vocals), exported to ONNX with the STFT outside the graph. Loader is generic over stem count and model architecture. |
+| Separation model | Demucs v4 fine-tuned (`htdemucs_ft`, Meta AI, MIT): four HTDemucs models, one per stem (drums, bass, other, vocals), exported to ONNX with the spectrogram and its inverse outside the graph. Chosen October 2026 after the first MUSDB-only BS-RoFormer checkpoint (9.7 dB, 100 training songs) sounded clearly worse than Demucs on real sessions; Demucs was trained on 900 songs. The BS-RoFormer loader stays in srt_core as a second engine. |
 | Beat/downbeat model | "Beat This!" (Foscarin, Schlüter, Widmer, ISMIR 2024), final0 checkpoint, exported to ONNX with the spectrogram outside the graph. |
 | Model delivery | Not in ReaPack. Downloaded on first use from the GitHub release of the matching version into REAPER's resource folder, with progress bar and checksum check. |
 | Model conversion | Done on the developer side in Python at release time only. Every published model ships with a correctness test against the original PyTorch output. |
@@ -309,24 +309,44 @@ where it is", which would switch the other items to the Time base first.
 
 ## 6. Separation pipeline (srt_core)
 
-Model: BS-RoFormer, 4 stems, host-STFT ONNX export. Input to the model is a
-precomputed STFT (real and imaginary parts) of an 8-second stereo chunk at
-44.1 kHz. Output is the masked spectrogram per stem. The host performs the
-inverse STFT.
+Model: Demucs v4 fine-tuned (`htdemucs_ft`), a bag of four HTDemucs
+models, each specialised for one stem. Each is exported to ONNX
+(tools/export_demucs.py) as the network between the spectrogram and the
+inverse spectrogram, with normalisation inside the graph. Inputs: the raw
+7.8 s stereo segment (343980 samples at 44.1 kHz) and its host spectrogram
+(2048 bins x 336 frames, real and imaginary). Outputs: a spectrogram per
+stem and the time-branch waveform per stem, both de-normalised.
 
-1. Split the input into 8-second chunks with 50% overlap (the chunk length
-   is read from the model's input shape: (frames - 1) x hop).
-2. For each chunk: STFT (n_fft 2048, hop 441, periodic Hann, reflect-padded
-   centred frames, unnormalised), run the model, inverse STFT per stem with
-   window-envelope normalisation.
-3. Overlap-add the stems with a Hann crossfade. The first chunk keeps a flat
-   start and the last a flat end so the file's edges are not attenuated.
-4. Progress reported per chunk. One chunk takes about 38 s on a 4-core CPU
-   with the half-precision weights and about a second on a graphics card.
+srt_core's `DemucsSeparator` reproduces `demucs.apply.apply_model`
+(split=True, overlap 0.25, shifts=0, transition_power 1):
+
+1. Resample to 44.1 kHz stereo. Segments start every 75% of 7.8 s. A
+   short last segment is centred in a zero-padded 7.8 s window
+   (`TensorChunk.padded`) and the result centre-trimmed back.
+2. Per segment and channel, HTDemucs._spec: reflect-pad by 1536 and
+   1536 + 336*1024 - 343980 samples, STFT (n_fft 4096, hop 1024, periodic
+   Hann, normalised, centred, reflect), drop the last bin, keep frames
+   [2, 338).
+3. Run all four models on the segment; take stem i from model i (the bag's
+   weights). Per stem and channel, HTDemucs._ispec: zero bin and two zero
+   frames back on each side, inverse STFT, trim the padding; add the
+   time-branch output.
+4. Overlap-add with a triangular weight peaking mid-segment; divide by the
+   summed weights. Demucs zeroes the two outer frames before its inverse, so
+   a segment's first and last ~4096 samples are inexact by design; the
+   weights are near zero there and the blend hides it (file ends keep it,
+   as Demucs does).
+5. Progress reported per model per segment. On an RTX 3070 a 4 s clip takes
+   about 10 s (four models); a CPU about twice that.
 
 The STFT and inverse STFT are implemented in srt_core with PocketFFT and
-must match PyTorch's `torch.stft` behaviour for the model's window, hop and
-padding. This is verified by the correctness test (section 9).
+match `torch.stft` / `torch.istft` for this window, hop, padding and
+normalisation. The correctness test (section 9) compares against stems
+produced by the official demucs package: the CPU provider matches to
+2e-5.
+
+The earlier engine, `StemSeparator` for the BS-RoFormer host-STFT export
+(8 s chunks, 50% Hann overlap-add), remains in srt_core and the CLI.
 
 Execution provider order: DirectML (Windows) or CoreML (macOS), then CPU.
 The provider used is reported in the console line.
@@ -400,7 +420,7 @@ mirroring them to this project's GitHub releases is still to do):
 
 | ID | Purpose | Size | Source |
 |---|---|---|---|
-| `bsroformer-4s-v1` | Stem separation | 269 MB (fp16) | ZFTurbo checkpoint, host-STFT ONNX export by silverdaw, MIT |
+| `htdemucs-ft-v1` (4 files) | Stem separation | 4 x 174 MB (fp32) | Demucs v4 fine-tuned weights by Meta AI, exported by tools/export_demucs.py, MIT. Hosted as release assets `models-v1` of this repository. |
 | `beatthis-final0-v1` | Beat and downbeat tracking | 82 MB (fp32) | CPJKU checkpoint, ONNX export by aaatmy, MIT |
 
 ---
@@ -516,7 +536,7 @@ additional files of the same package so they land next to the extension.
 | 1 | Detection in srt_cli | Beat This! running in C++, front end verified against Python, onset refinement, DBN decoding with tempo prior. `srt_cli beats file.wav` prints downbeats and tempo. Accuracy tests pass on Shaun's stems. Status: model, front end, chunking, minimal peak picking, DBN decoding with tempo prior, onset refinement, tempo fit and confidence scoring are done and verified on a synthetic clip. Only the real-stem accuracy tests remain (waiting on test material). |
 | 2 | Fit drums to grid | Action wired to REAPER. Manual test on a real project. Status: written and compiling on all platforms; not yet run inside REAPER. See docs/TESTING.md. |
 | 3 | Conform drum bars | Action wired. Manual test. First tagged release `v0.1.0` for internal use. Status: written alongside milestone 2 (shares the detection job); not yet run inside REAPER. |
-| 4 | Separation in srt_cli | BS-RoFormer export, STFT front end verified, chunking and overlap-add, `srt_cli separate file.wav`. Correctness test passes. Status: done. The C++ output matches the Python reference to under 2e-3 on a synthetic mix; the chunk overlap-add keeps flat edges on the first and last chunk so file ends are not attenuated (an improvement over the reference script). |
+| 4 | Separation in srt_cli | BS-RoFormer export, STFT front end verified, chunking and overlap-add, `srt_cli separate file.wav`. Correctness test passes. Status: done. The C++ output matches the Python reference to under 2e-3 on a synthetic mix; the chunk overlap-add keeps flat edges on the first and last chunk so file ends are not attenuated (an improvement over the reference script). October 2026: engine switched to Demucs v4 fine-tuned (section 6) after listening tests on a real session; CPU output matches the official demucs package to 2e-5. |
 | 5 | Separate stems | Action wired, model download flow, folder and track creation. Release `v0.2.0`, public ReaPack index. Status: action and download flow written and compiling on all platforms (WinHTTP on Windows, libcurl elsewhere, SHA-256 verified); not yet run inside REAPER. Release and ReaPack index remain. |
 | 6 | macOS | Apple Silicon build with CoreML, same tests. Release `v0.3.0`. |
 

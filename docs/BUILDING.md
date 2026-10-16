@@ -249,12 +249,44 @@ refinement.
 ## Trying separation from the command line
 
 ```
-build/linux-release/src/cli/srt_cli separate song.wav --model build/linux-release/_models/bs_roformer_4stem_rhythm_fp16.onnx
+build/linux-release/src/cli/srt_cli separate song.wav --demucs build/linux-release/_models/demucs
 ```
 
 writes `song - drums.wav`, `song - bass.wav`, `song - other.wav` and
-`song - vocals.wav` next to the input. On a CPU each 8-second chunk takes
-tens of seconds; on a graphics card about a second.
+`song - vocals.wav` next to the input, using Demucs v4 fine-tuned (four
+models, one per stem; see the next section for where the files come from).
+Every 7.8 s segment goes through all four models. On a graphics card a
+4 s clip takes about 10 s; on a CPU about twice that.
+
+`--model <file.onnx>` instead of `--demucs` runs the earlier BS-RoFormer
+host-STFT export, which the core still supports.
+
+## Exporting the Demucs models
+
+The extension ships Demucs v4 fine-tuned (`htdemucs_ft`, MIT, Meta AI) as
+four ONNX files exported by `tools/export_demucs.py` from the official
+`demucs` package, with the spectrogram and its inverse kept outside the
+graph (`src/core/src/demucs.cpp` does those). The script downloads the
+PyTorch weights on first run, exports each model, checks the export against
+PyTorch, and writes a manifest with sizes and checksums:
+
+```
+python -m venv .venv
+.venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch torchaudio
+.venv/bin/pip install demucs onnx onnxruntime numpy onnxscript
+.venv/bin/python tools/export_demucs.py build/linux-release/_models/demucs
+.venv/bin/python tools/make_demucs_reference.py      # reference stems for the correctness test
+```
+
+(On Windows use `.venv\Scripts\python` and `build\windows-release`.) The
+unit test `Demucs v4 fine-tuned separation matches the Python reference`
+runs when the four files are in `<build>/_models/demucs` and skips
+otherwise. The checksums in `src/reaper/models.cpp` must match the files
+published as release assets.
+
+`tools/bisect_onnx_provider.py <model.onnx>` compares every intermediate
+tensor between the CPU and DirectML providers and names the first node that
+differs. It needs `onnxruntime-directml` in place of `onnxruntime`.
 
 `srt_cli download <url> <dest> --sha256 <hex>` and `srt_cli sha256 <file>`
 exercise the model download path. Linux builds need `libcurl4-openssl-dev`

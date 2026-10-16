@@ -46,12 +46,17 @@ add_executable(srt_tests
   test_grid_fit.cpp
   test_stft.cpp
   test_separator.cpp
+  test_demucs.cpp
   test_sha256.cpp)
 target_link_libraries(srt_tests PRIVATE srt::core Catch2::Catch2WithMain)
+# Demucs v4 fine-tuned, four ONNX files exported by tools/export_demucs.py
+# (see docs/BUILDING.md). The correctness test skips when they are missing.
+set(SRT_DEMUCS_MODEL_DIR "${CMAKE_BINARY_DIR}/_models/demucs")
 target_compile_definitions(srt_tests PRIVATE
   SRT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
   SRT_BEAT_THIS_MODEL="${SRT_BEAT_THIS_MODEL}"
-  SRT_SEPARATION_MODEL="${SRT_SEPARATION_MODEL}")
+  SRT_SEPARATION_MODEL="${SRT_SEPARATION_MODEL}"
+  SRT_DEMUCS_MODEL_DIR="${SRT_DEMUCS_MODEL_DIR}")
 srt_copy_onnxruntime_next_to(srt_tests)
 if(APPLE)
   set_target_properties(srt_tests PROPERTIES BUILD_RPATH "@loader_path")

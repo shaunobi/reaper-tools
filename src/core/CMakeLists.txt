@@ -15,6 +15,7 @@ add_library(srt_core STATIC
   src/grid_fit.cpp
   src/stft.cpp
   src/separator.cpp
+  src/demucs.cpp
   src/sha256.cpp
   src/download_common.cpp
 )

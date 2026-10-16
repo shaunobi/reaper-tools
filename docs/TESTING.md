@@ -100,13 +100,15 @@ at a clearly different tempo, plus one or two other items on other tracks.
 
 ## SRT: Separate stems
 
-Setup: a full mix (a few minutes long) on a track. Keep the ReaScript
-console open.
+Setup: a full mix (a few minutes long) on a track. Keep the SRT log window
+open.
 
-1. Select the item, run the action. The first time, a dialog asks to
-   download the 269 MB model; accept. The jobs window shows the download
-   with a megabyte counter, then "verifying checksum", then the separation
-   starts by itself.
+1. Select the item, run the action. The first time, one dialog asks to
+   download the four Demucs model files (697 MB in total); accept. The
+   jobs window shows each download in turn with a megabyte counter, then
+   "verifying checksum", then the separation starts by itself. The log
+   names the engine and provider at the end: "Demucs v4 fine-tuned,
+   DirectML" on the Windows studio machine.
 2. While it runs, keep editing elsewhere in the project. REAPER must stay
    responsive. Cancel from the jobs window once to check that nothing is
    written and nothing changes; then run it again.

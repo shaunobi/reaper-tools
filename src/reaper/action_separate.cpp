@@ -8,7 +8,7 @@
 #include "item_audio.h"
 #include "models.h"
 
-#include "srt/separator.h"
+#include "srt/demucs.h"
 #include "srt/wav.h"
 
 #include <chrono>
@@ -51,7 +51,7 @@ struct SeparateJob : srt::Job {
     double itemPosition = 0.0;
     double itemLength = 0.0;
     double playrate = 1.0;
-    std::filesystem::path modelPath;
+    std::vector<std::filesystem::path> modelPaths; // one per stem
     srt::AudioBuffer audio;
     std::vector<std::filesystem::path> outputs; // one per stem, chosen up front
     std::vector<std::string> stemNames;
@@ -66,9 +66,9 @@ struct SeparateJob : srt::Job {
         std::string fault;
         const bool ok = runGuarded(
             [&] {
-                srt::SeparatorConfig cfg;
-                cfg.modelPath = modelPath;
-                srt::StemSeparator sep(cfg);
+                srt::DemucsConfig cfg;
+                cfg.modelPaths = modelPaths;
+                srt::DemucsSeparator sep(cfg);
                 provider = sep.provider();
                 stemNames = sep.config().stemNames;
                 stems = sep.separate(audio, &p);
@@ -155,12 +155,12 @@ void onSeparateDone(const srt::JobStatus& st, srt::Job& base) {
     UpdateArrange();
 
     char line[512];
-    std::snprintf(line, sizeof(line), "separated \"%s\" into %zu stems in %.1f s (%s)", job.label.c_str(), n,
-                  job.seconds, srt::toString(job.provider));
+    std::snprintf(line, sizeof(line), "separated \"%s\" into %zu stems in %.1f s (Demucs v4 fine-tuned, %s)",
+                  job.label.c_str(), n, job.seconds, srt::toString(job.provider));
     console(line);
 }
 
-void separateWithModel(const std::filesystem::path& model) {
+void separateWithModels(const std::vector<std::filesystem::path>& models) {
     const int count = CountSelectedMediaItems(nullptr);
     std::vector<MediaItem*> items;
     for (int i = 0; i < count; ++i) items.push_back(GetSelectedMediaItem(nullptr, i));
@@ -187,7 +187,7 @@ void separateWithModel(const std::filesystem::path& model) {
         job->itemLength = GetMediaItemInfo_Value(item, "D_LENGTH");
         job->playrate = GetMediaItemTakeInfo_Value(take, "D_PLAYRATE");
         if (job->playrate <= 0.0) job->playrate = 1.0;
-        job->modelPath = model;
+        job->modelPaths = models;
         const double srcStart = GetMediaItemTakeInfo_Value(take, "D_STARTOFFS");
         double srcLength = job->itemLength * job->playrate;
         if (srcStart + srcLength > info.lengthSeconds) srcLength = info.lengthSeconds - srcStart;
@@ -218,7 +218,9 @@ void actionSeparateStems() {
         console("select at least one item first");
         return;
     }
-    ensureModel(kSeparationModel, &separateWithModel);
+    std::vector<const ModelSpec*> specs;
+    for (size_t i = 0; i < kDemucsModelCount; ++i) specs.push_back(&kDemucsModels[i]);
+    ensureModels(specs, &separateWithModels);
 }
 
 } // namespace srt::reaper

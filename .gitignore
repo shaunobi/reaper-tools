@@ -7,3 +7,5 @@ out/
 *.rc_mac_menu
 __pycache__/
 dist/
+
+.venv/

@@ -155,9 +155,11 @@ bool consoleContains(const std::string& needle) {
 // Mirrors <resource>/SRT/models/<id>/<file> onto the test model cache that the
 // unit tests download. Returns false if the cached model is not there.
 bool installModel(const srt::reaper::ModelSpec& spec, const fs::path& resource) {
-    const fs::path cached = modelsCacheDir() / spec.fileName;
+    // The Demucs exports live in a subfolder (tools/export_demucs.py writes there).
+    fs::path cached = modelsCacheDir() / spec.fileName;
+    if (!fs::exists(cached)) cached = modelsCacheDir() / "demucs" / spec.fileName;
     if (!fs::exists(cached)) {
-        std::printf("model %s not found at %s\n", spec.fileName, cached.string().c_str());
+        std::printf("model %s not found at %s\n", spec.fileName, (modelsCacheDir() / spec.fileName).string().c_str());
         return false;
     }
     const fs::path dest = resource / "SRT" / "models" / spec.id / spec.fileName;
@@ -440,7 +442,8 @@ int runSeparate(int argc, char** argv) {
     if (argc < 3) return 2;
     fs::path media, resource;
     prepareWorkDir(media, resource);
-    if (!installModel(srt::reaper::kSeparationModel, resource)) return 77;
+    for (size_t i = 0; i < srt::reaper::kDemucsModelCount; ++i)
+        if (!installModel(srt::reaper::kDemucsModels[i], resource)) return 77;
     if (!loadExtension()) return 1;
     auto& h = fake::host();
     MediaTrack* tr = h.addTrack("Mix");
@@ -491,7 +494,7 @@ int runShell(int argc, char** argv) {
     fs::path media, resource;
     prepareWorkDir(media, resource);
     installModel(srt::reaper::kBeatThisModel, resource);
-    installModel(srt::reaper::kSeparationModel, resource);
+    for (size_t i = 0; i < srt::reaper::kDemucsModelCount; ++i) installModel(srt::reaper::kDemucsModels[i], resource);
     if (!loadExtension()) return 1;
     auto& h = fake::host();
     MediaTrack* tr = h.addTrack("Track 1");
