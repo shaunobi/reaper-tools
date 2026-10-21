@@ -1,0 +1,40 @@
+#include "resource.h"
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+// Rows are 26 dialog units apart. progress_window.cpp hides unused rows and
+// shrinks the window to fit.
+IDD_SRT_PROGRESS DIALOGEX 0, 0, 340, 138
+STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "SRT jobs"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "",IDC_SRT_LABEL0,8,6,290,10
+    CONTROL         "",IDC_SRT_BAR0,"msctls_progress32",0x0,8,17,290,10
+    PUSHBUTTON      "Cancel",IDC_SRT_CANCEL0,302,12,32,14
+    LTEXT           "",IDC_SRT_LABEL0+1,8,32,290,10
+    CONTROL         "",IDC_SRT_BAR0+1,"msctls_progress32",0x0,8,43,290,10
+    PUSHBUTTON      "Cancel",IDC_SRT_CANCEL0+1,302,38,32,14
+    LTEXT           "",IDC_SRT_LABEL0+2,8,58,290,10
+    CONTROL         "",IDC_SRT_BAR0+2,"msctls_progress32",0x0,8,69,290,10
+    PUSHBUTTON      "Cancel",IDC_SRT_CANCEL0+2,302,64,32,14
+    LTEXT           "",IDC_SRT_LABEL0+3,8,84,290,10
+    CONTROL         "",IDC_SRT_BAR0+3,"msctls_progress32",0x0,8,95,290,10
+    PUSHBUTTON      "Cancel",IDC_SRT_CANCEL0+3,302,90,32,14
+    LTEXT           "",IDC_SRT_MORE,8,112,200,10
+    PUSHBUTTON      "Cancel all",IDC_SRT_CANCEL_ALL,280,118,54,14
+END
+
+// The SRT log: every line the extension reports, for the whole REAPER
+// session and the tail of earlier sessions. Resizable; log_window.cpp
+// stretches the text box and parks the bottom row on WM_SIZE.
+IDD_SRT_LOG DIALOGEX 0, 0, 420, 240
+STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+CAPTION "SRT log"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    EDITTEXT        IDC_SRT_LOG_TEXT,6,6,408,208,ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | WS_HSCROLL | ES_AUTOHSCROLL
+    LTEXT           "",IDC_SRT_LOG_PATH,6,222,354,10
+    PUSHBUTTON      "Clear",IDC_SRT_LOG_CLEAR,370,220,44,14
+END

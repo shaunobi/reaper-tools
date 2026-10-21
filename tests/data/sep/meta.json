@@ -1,0 +1,14 @@
+{
+ "sample_rate": 44100,
+ "slice_start": 66150,
+ "slice_end": 88200,
+ "stems": [
+  "drums",
+  "bass",
+  "other",
+  "vocals"
+ ],
+ "chunk_samples": 352800,
+ "frames": 801,
+ "model_sha256": "4bac38e42c085b5d69964e2b7ff161318a1315122c10b025c718b20e94d85d6b"
+}

@@ -1,0 +1,139 @@
+name: build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  linux:
+    name: Linux (compile check + tests)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build perl libcurl4-openssl-dev
+      - name: Cache test models
+        uses: actions/cache@v4
+        with:
+          path: build/linux-release/_models
+          key: models-${{ hashFiles('tests/CMakeLists.txt') }}
+      - name: Configure
+        run: cmake --preset linux-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # release assets of a private repository need it
+      - name: Build
+        run: cmake --build --preset linux-release
+      - name: Test
+        run: ctest --preset linux-release
+
+  windows:
+    name: Windows x64
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - name: Cache test models
+        uses: actions/cache@v4
+        with:
+          path: build/windows-release/_models
+          key: models-${{ hashFiles('tests/CMakeLists.txt') }}
+      - name: Configure
+        run: cmake --preset windows-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # release assets of a private repository need it
+      - name: Build
+        run: cmake --build --preset windows-release
+      - name: Test
+        run: ctest --preset windows-release
+      - name: Package
+        run: cmake --install build/windows-release --config Release --prefix dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reaper_srt-windows-x64
+          path: dist/UserPlugins
+
+  macos:
+    name: macOS arm64
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - name: Install tools
+        run: brew install ninja
+      - name: Cache test models
+        uses: actions/cache@v4
+        with:
+          path: build/macos-release/_models
+          key: models-${{ hashFiles('tests/CMakeLists.txt') }}
+      - name: Configure
+        run: cmake --preset macos-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # release assets of a private repository need it
+      - name: Build
+        run: cmake --build --preset macos-release
+      - name: Test
+        run: ctest --preset macos-release
+      - name: Package
+        run: cmake --install build/macos-release --prefix dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reaper_srt-macos-arm64
+          path: dist/UserPlugins
+
+  release:
+    name: GitHub release and ReaPack index
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts }
+      - name: Collect release files
+        id: collect
+        run: |
+          set -e
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p release
+          (cd artifacts/reaper_srt-windows-x64 && zip -r ../../release/reaper_srt-${GITHUB_REF_NAME}-windows-x64.zip .)
+          (cd artifacts/reaper_srt-macos-arm64 && zip -r ../../release/reaper_srt-${GITHUB_REF_NAME}-macos-arm64.zip .)
+          # Unversioned copies so the README's "latest release" links stay valid.
+          cp release/reaper_srt-${GITHUB_REF_NAME}-windows-x64.zip release/reaper_srt-windows-x64.zip
+          cp release/reaper_srt-${GITHUB_REF_NAME}-macos-arm64.zip release/reaper_srt-macos-arm64.zip
+          # Individual files for ReaPack, which downloads each file by URL.
+          cp artifacts/reaper_srt-windows-x64/* release/
+          cp artifacts/reaper_srt-macos-arm64/* release/
+          WIN=$(ls artifacts/reaper_srt-windows-x64 | paste -sd, -)
+          MAC=$(ls artifacts/reaper_srt-macos-arm64 | paste -sd, -)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "win=$WIN" >> "$GITHUB_OUTPUT"
+          echo "mac=$MAC" >> "$GITHUB_OUTPUT"
+          ls -la release
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: release/*
+      - name: Update ReaPack index on main
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -l --format='%(contents)' "${GITHUB_REF_NAME}" > changes.txt || true
+          python3 tools/reapack_index.py --index index.xml \
+            --version "${{ steps.collect.outputs.version }}" \
+            --author "${GITHUB_REPOSITORY_OWNER}" \
+            --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}" \
+            --changelog changes.txt \
+            --files "win64=${{ steps.collect.outputs.win }}" \
+            --files "darwin-arm64=${{ steps.collect.outputs.mac }}"
+          git add index.xml
+          git commit -m "ReaPack index: add ${GITHUB_REF_NAME}" || echo "index unchanged"
+          git push origin HEAD:main

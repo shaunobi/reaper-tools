@@ -1,0 +1,116 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 24, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": { "CMAKE_EXPORT_COMPILE_COMMANDS": "ON" }
+    },
+    {
+      "name": "windows-release",
+      "inherits": "base",
+      "displayName": "Windows x64 Release (Visual Studio 2022)",
+      "generator": "Visual Studio 17 2022",
+      "architecture": { "value": "x64", "strategy": "set" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "macos-release",
+      "inherits": "base",
+      "displayName": "macOS arm64 Release",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+    },
+    {
+      "name": "linux-release",
+      "inherits": "base",
+      "displayName": "Linux x64 Release (compile check and tests)",
+      "generator": "Ninja",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    },
+    {
+      "name": "linux-debug",
+      "inherits": "linux-release",
+      "displayName": "Linux x64 Debug",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "windows-mingw",
+      "inherits": "base",
+      "displayName": "Windows x64 cross-build from Linux (clang + MinGW + lld), for the local loop",
+      "generator": "Ninja",
+      "toolchainFile": "${sourceDir}/cmake/toolchain-mingw-clang.cmake",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    },
+    {
+      "name": "windows-mingw-debug",
+      "inherits": "windows-mingw",
+      "displayName": "Windows x64 cross-build, debug symbols",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "windows-clang",
+      "inherits": "base",
+      "displayName": "Windows x64 cross-build from Linux (clang-cl + lld-link + Windows SDK via xwin): REAPER-loadable",
+      "generator": "Ninja",
+      "toolchainFile": "${sourceDir}/cmake/toolchain-msvc-clang.cmake",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    },
+    {
+      "name": "windows-clang-debug",
+      "inherits": "windows-clang",
+      "displayName": "Windows x64 cross-build (clang-cl), debug symbols (PDB)",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "windows-release", "configurePreset": "windows-release", "configuration": "Release" },
+    { "name": "macos-release", "configurePreset": "macos-release" },
+    { "name": "linux-release", "configurePreset": "linux-release" },
+    { "name": "linux-debug", "configurePreset": "linux-debug" },
+    { "name": "windows-mingw", "configurePreset": "windows-mingw" },
+    { "name": "windows-mingw-debug", "configurePreset": "windows-mingw-debug" },
+    { "name": "windows-clang", "configurePreset": "windows-clang" },
+    { "name": "windows-clang-debug", "configurePreset": "windows-clang-debug" }
+  ],
+  "testPresets": [
+    { "name": "windows-release", "configurePreset": "windows-release", "configuration": "Release", "output": { "outputOnFailure": true } },
+    { "name": "macos-release", "configurePreset": "macos-release", "output": { "outputOnFailure": true } },
+    { "name": "linux-release", "configurePreset": "linux-release", "output": { "outputOnFailure": true } },
+    { "name": "linux-debug", "configurePreset": "linux-debug", "output": { "outputOnFailure": true } },
+    {
+      "name": "windows-mingw",
+      "configurePreset": "windows-mingw",
+      "output": { "outputOnFailure": true },
+      "environment": { "WINEDEBUG": "-all", "WINEPREFIX": "${sourceDir}/build/wine-prefix" }
+    },
+    {
+      "name": "windows-mingw-debug",
+      "configurePreset": "windows-mingw-debug",
+      "output": { "outputOnFailure": true },
+      "environment": { "WINEDEBUG": "-all", "WINEPREFIX": "${sourceDir}/build/wine-prefix" }
+    },
+    {
+      "name": "windows-clang",
+      "configurePreset": "windows-clang",
+      "output": { "outputOnFailure": true },
+      "environment": { "WINEDEBUG": "-all", "WINEPREFIX": "${sourceDir}/build/wine-prefix" }
+    },
+    {
+      "name": "windows-clang-debug",
+      "configurePreset": "windows-clang-debug",
+      "output": { "outputOnFailure": true },
+      "environment": { "WINEDEBUG": "-all", "WINEPREFIX": "${sourceDir}/build/wine-prefix" }
+    }
+  ]
+}
