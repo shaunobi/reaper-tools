@@ -105,6 +105,9 @@ jobs:
           mkdir -p release
           (cd artifacts/reaper_srt-windows-x64 && zip -r ../../release/reaper_srt-${GITHUB_REF_NAME}-windows-x64.zip .)
           (cd artifacts/reaper_srt-macos-arm64 && zip -r ../../release/reaper_srt-${GITHUB_REF_NAME}-macos-arm64.zip .)
+          # Unversioned copies so the README's "latest release" links stay valid.
+          cp release/reaper_srt-${GITHUB_REF_NAME}-windows-x64.zip release/reaper_srt-windows-x64.zip
+          cp release/reaper_srt-${GITHUB_REF_NAME}-macos-arm64.zip release/reaper_srt-macos-arm64.zip
           # Individual files for ReaPack, which downloads each file by URL.
           cp artifacts/reaper_srt-windows-x64/* release/
           cp artifacts/reaper_srt-macos-arm64/* release/

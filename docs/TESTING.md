@@ -9,9 +9,10 @@ console. The log window opens by itself only when an error is logged.
 
 ## Install
 
-1. Download the `reaper_srt-windows-x64` artifact from the latest CI run
-   (or build with `docs/BUILDING.md`) and copy the contents of its
-   `UserPlugins` folder into REAPER's `UserPlugins` folder.
+1. Download `reaper_srt-windows-x64.zip` from the GitHub release under test
+   (or the `reaper_srt-windows-x64` artifact of a CI run, or build with
+   `docs/BUILDING.md`) and copy its contents into REAPER's `UserPlugins`
+   folder.
 2. Restart REAPER. Models download on first use: the action asks first,
    shows progress in the jobs window, and verifies the file. If the download
    cannot run, the console prints the URL and the exact path to save to.
